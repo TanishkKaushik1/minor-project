@@ -40,7 +40,7 @@ export const activateUser = (userId: number) => apiFetch(`${M}/users/${userId}/a
 export interface Department { id: number; name: string; code: string }
 export interface Programme { id: number; name: string; code: string; department_code: string; total_semesters: number }
 export interface Specialization { id: number; name: string; code: string; programme_code: string }
-export interface Batch { id: number; start_year: number; expected_end_year: number; programme_id: number; specialization_id: number }
+export interface Batch { id: number; name: string; start_year: number; expected_end_year: number; programme_id: number; specialization_id?: number | null }
 export interface Section { id: number; name: string; batch_id: number; term_id: number }
 
 const q = (path: string, key: string, val?: string | number) =>
@@ -60,11 +60,12 @@ export const createSpecialization = (b: { programme_code: string; name: string; 
 
 export const listBatches = (specializationId?: number): Promise<Batch[]> =>
     apiFetch(q(`${M}/batches`, "specialization_id", specializationId));
-export const createBatch = (b: { programme_code: string; specialization_code: string; start_year: number; expected_end_year: number }) =>
+export const createBatch = (b: { name: string; programme_code: string; specialization_code: string; start_year: number; expected_end_year: number }) =>
     post("/batches", b);
 
 export const listSections = (): Promise<Section[]> => apiFetch(`${M}/sections`);
 export const createSection = (b: Omit<Section, "id">) => post("/sections", b);
+
 /* ---------- Academic setup (terms, subjects, offerings, enrollment) ---------- */
 
 export interface Term { id: number; name: string; start_date: string; end_date: string; is_active: boolean }
@@ -96,6 +97,7 @@ export interface Correction {
     reason: string;
     requested_at: string;
 }
+
 /* ---------- Deletes ---------- */
 
 const del = (p: string, id: number) => apiFetch(`${M}${p}/${id}`, { method: "DELETE" });
@@ -108,7 +110,6 @@ export const deleteSection = (id: number) => del("/sections", id);
 export const deleteTerm = (id: number) => del("/terms", id);
 export const deleteSubject = (id: number) => del("/subjects", id);
 export const deleteOffering = (id: number) => del("/course-offerings", id);
-
 
 export const listPendingCorrections = (): Promise<Correction[]> => apiFetch("/web/corrections/pending");
 export const resolveCorrection = (id: number, b: { decision: string; rejection_reason?: string }) =>

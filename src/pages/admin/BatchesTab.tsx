@@ -24,7 +24,11 @@ export default function BatchesTab() {
             remove={deleteBatch}
             columns={["id", "name", "start_year", "expected_end_year"]}
             fields={[
-                { name: "name", label: "Batch Name (e.g., 2024-2028 CSE)", type: "text" },
+                {
+                    name: "name",
+                    label: "Batch Name (e.g., Morning Shift, Lateral Entry, 2024-CSE)",
+                    type: "text",
+                },
                 { name: "department_code", label: "Department", options: departments },
                 { name: "programme_code", label: "Programme", options: programmes, dependsOn: "department_code" },
                 { name: "specialization_code", label: "Specialization", options: specs, dependsOn: "programme_code" },
