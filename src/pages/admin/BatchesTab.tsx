@@ -1,5 +1,4 @@
 import ResourcePanel from "./ResourcePanel";
-import type { Row } from "./ResourcePanel";
 import { listBatches, createBatch, deleteBatch, listSpecializations, listProgrammes, listDepartments } from "../../api/admin";
 
 const departments = () => listDepartments().then((d) => d.map((x) => ({ value: x.code, label: `${x.code} · ${x.name}` })));
@@ -14,8 +13,7 @@ const specs = (v: Record<string, string>) =>
         ? listSpecializations(v.programme_code).then((s) => s.map((x) => ({ value: x.code, label: `${x.code} · ${x.name}` })))
         : Promise.resolve([]);
 
-// department_code is only a UI filter; the API takes programme_code + specialization_code
-const create = ({ department_code: _d, ...batch }: Row) => createBatch(batch as Parameters<typeof createBatch>[0]);
+const create = ({ department_code: _d, ...batch }: any) => createBatch(batch);
 
 export default function BatchesTab() {
     return (
@@ -24,8 +22,9 @@ export default function BatchesTab() {
             list={() => listBatches()}
             create={create}
             remove={deleteBatch}
-            columns={["id", "programme_id", "specialization_id", "start_year", "expected_end_year"]}
+            columns={["id", "name", "start_year", "expected_end_year"]}
             fields={[
+                { name: "name", label: "Batch Name (e.g., 2024-2028 CSE)", type: "text" },
                 { name: "department_code", label: "Department", options: departments },
                 { name: "programme_code", label: "Programme", options: programmes, dependsOn: "department_code" },
                 { name: "specialization_code", label: "Specialization", options: specs, dependsOn: "programme_code" },
