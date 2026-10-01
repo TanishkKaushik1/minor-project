@@ -1,7 +1,21 @@
+import ResourcePanel from "./ResourcePanel";
+import { listAuditLogs } from "../../api/admin";
+
+// ponytail: shows only the newest 50 entries (page 1). Upgrade: add page controls once the log outgrows it.
 export default function LogsPage() {
     return (
-        <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-8 text-center text-slate-500 text-sm">
-            Audit log isn't available yet. The API for it hasn't been built.
-        </div>
+        <ResourcePanel
+            title="Audit Log"
+            list={() => listAuditLogs().then((r) => r.items)}
+            columns={[
+                "timestamp",
+                "changed_by_name",
+                "changed_by_email",
+                "attendance_record_id",
+                "old_status",
+                "new_status",
+                "reason",
+            ]}
+        />
     );
 }

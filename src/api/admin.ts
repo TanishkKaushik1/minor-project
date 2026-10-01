@@ -19,8 +19,26 @@ export interface User {
     batch_id?: number | null;
 }
 
-export const listUsers = (): Promise<User[]> => apiFetch(`${M}/users`);
+// Added to support the new backend pagination schema
+export interface PaginatedUsers {
+    items: User[];
+    total: number;
+    page: number;
+    size: number;
+}
 
+// Updated to pass pagination parameters to the backend
+export const listUsers = (page: number = 1, size: number = 50): Promise<PaginatedUsers> =>
+    apiFetch(`${M}/users?page=${page}&size=${size}`);
+export interface DashboardStats {
+    total_users: number;
+    active_users: number;
+    total_students: number;
+    total_teachers: number;
+    total_coordinators: number;
+    total_admins: number;
+}
+export const getDashboardStats = (): Promise<DashboardStats> => apiFetch("/admin/dashboard/stats");
 export const createUser = (data: {
     email: string;
     full_name: string;
@@ -35,6 +53,40 @@ export const createUser = (data: {
 export const deactivateUser = (userId: number) => apiFetch(`${M}/users/${userId}/deactivate`, { method: "PATCH" });
 export const activateUser = (userId: number) => apiFetch(`${M}/users/${userId}/activate`, { method: "PATCH" });
 
+export interface AuditLogItem {
+    id: number;
+    attendance_record_id: number;
+    changed_by_name: string;
+    changed_by_email: string;
+    old_status: string;
+    new_status: string;
+    reason: string | null;
+    timestamp: string;
+}
+
+export interface PaginatedAuditLogs {
+    items: AuditLogItem[];
+    total: number;
+    page: number;
+    size: number;
+}
+
+export const listAuditLogs = (
+    page: number = 1,
+    size: number = 50,
+    userId?: number,
+    recordId?: number
+): Promise<PaginatedAuditLogs> => {
+    const params = new URLSearchParams({
+        page: page.toString(),
+        size: size.toString(),
+    });
+
+    if (userId) params.append("user_id", userId.toString());
+    if (recordId) params.append("record_id", recordId.toString());
+
+    return apiFetch(`/web/audit-logs?${params.toString()}`);
+};
 /* ---------- Academic hierarchy ---------- */
 
 export interface Department { id: number; name: string; code: string }

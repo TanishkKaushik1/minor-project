@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
 export type Opt = { value: string | number; label: string };
@@ -36,6 +36,7 @@ export default function ResourcePanel({ title, list, fields = [], create, column
     const [vals, setVals] = useState<Record<string, string>>(defaults);
     const [opts, setOpts] = useState<Record<string, Opt[]>>({});
     const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+    const seen = useRef<Record<string, string>>({}); // parent value each field's options were last loaded for
 
     const fail = (e: unknown, fallback: string) => setMsg({ ok: false, text: e instanceof Error ? e.message : fallback });
     const load = () => list().then((r) => setRows(r ?? [])).catch((e) => fail(e, "Failed to load"));
@@ -44,9 +45,13 @@ export default function ResourcePanel({ title, list, fields = [], create, column
 
     const dep = fields.map((f) => (f.dependsOn ? vals[f.dependsOn] ?? "" : "")).join("|");
     useEffect(() => {
-        fields.forEach((f) =>
-            f.options?.(vals).then((o) => setOpts((p) => ({ ...p, [f.name]: o }))).catch((e) => fail(e, "Failed to load options"))
-        );
+        fields.forEach((f) => {
+            if (!f.options) return;
+            const key = f.dependsOn ? vals[f.dependsOn] ?? "" : "";
+            if (seen.current[f.name] === key) return; // its parent didn't change, skip refetch
+            seen.current[f.name] = key;
+            f.options(vals).then((o) => setOpts((p) => ({ ...p, [f.name]: o }))).catch((e) => fail(e, "Failed to load options"));
+        });
     }, [dep]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const run: Run = async (fn, okText) => {
@@ -107,7 +112,7 @@ export default function ResourcePanel({ title, list, fields = [], create, column
                             ) : f.type === "checkbox" ? (
                                 <input type="checkbox" checked={vals[f.name] === "true"} onChange={(e) => set(f.name, String(e.target.checked))} className="h-4 w-4 mt-2" />
                             ) : (
-                                        <input required={!f.optional} type={f.type ?? "text"} value={vals[f.name] ?? ""} onChange={(e) => set(f.name, f.upper ? e.target.value.toUpperCase() : e.target.value)} className={input} />
+                                <input required={!f.optional} type={f.type ?? "text"} value={vals[f.name] ?? ""} onChange={(e) => set(f.name, f.upper ? e.target.value.toUpperCase() : e.target.value)} className={input} />
                             )}
                         </div>
                     ))}

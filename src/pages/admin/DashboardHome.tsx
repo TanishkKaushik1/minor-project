@@ -1,6 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react"; 
-import { listUsers, listDepartments, listProgrammes, listBatches } from "../../api/admin";
-import type { User } from "../../api/admin";
+import { useEffect, useState, type ReactNode } from "react";
+import { getDashboardStats, listDepartments, listProgrammes, listBatches } from "../../api/admin";
 
 type CardData = {
     key: string;
@@ -95,6 +94,8 @@ const CARD_THEMES: Record<string, Omit<CardData, "key" | "label" | "value">> = {
     },
 };
 
+const count = (p: Promise<unknown[]>) => p.then((a) => a.length);
+
 export default function DashboardHome() {
     const [cards, setCards] = useState<CardData[]>([]);
     const [errors, setErrors] = useState<string[]>([]);
@@ -102,11 +103,13 @@ export default function DashboardHome() {
     const [showErrorBanner, setShowErrorBanner] = useState(true);
 
     useEffect(() => {
-        const jobs: [string, Promise<unknown[]>][] = [
-            ["Users", listUsers()],
-            ["Departments", listDepartments()],
-            ["Programmes", listProgrammes()],
-            ["Batches", listBatches()],
+        const stats = getDashboardStats(); // one request shared by two cards
+        const jobs: [string, Promise<number>][] = [
+            ["Users", stats.then((s) => s.total_users)],
+            ["Active Users", stats.then((s) => s.active_users)],
+            ["Departments", count(listDepartments())],
+            ["Programmes", count(listProgrammes())],
+            ["Batches", count(listBatches())],
         ];
 
         Promise.allSettled(jobs.map(([, p]) => p)).then((res) => {
@@ -115,38 +118,15 @@ export default function DashboardHome() {
 
             res.forEach((r, i) => {
                 const name = jobs[i][0];
-                const theme = CARD_THEMES[name];
-
                 if (r.status === "rejected") {
                     errs.push(`${name}: ${r.reason instanceof Error ? r.reason.message : "failed to fetch"}`);
-                    out.push({ key: name, label: name, value: null, ...theme });
-                    if (name === "Users") {
-                        out.push({
-                            key: "Active Users",
-                            label: "Active Users",
-                            value: null,
-                            ...CARD_THEMES["Active Users"],
-                        });
-                    }
-                    return;
                 }
-
                 out.push({
                     key: name,
                     label: name,
-                    value: r.value.length,
-                    ...theme,
+                    value: r.status === "fulfilled" ? r.value : null,
+                    ...CARD_THEMES[name],
                 });
-
-                if (name === "Users") {
-                    const activeCount = (r.value as User[]).filter((u) => u.is_active).length;
-                    out.push({
-                        key: "Active Users",
-                        label: "Active Users",
-                        value: activeCount,
-                        ...CARD_THEMES["Active Users"],
-                    });
-                }
             });
 
             setCards(out);
