@@ -15,6 +15,11 @@ export interface CourseOffering {
     section_name: string;
     subject_name: string;
     teacher_name: string;
+    teacher_id?: number;
+    subject_code?: string;
+    term_id?: number;
+    section_id?: number;
+    subject_id?: number;
 }
 
 export interface Subject {

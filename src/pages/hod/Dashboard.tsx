@@ -1,23 +1,65 @@
 // src/pages/hod/Dashboard.tsx
 import { useState, useEffect } from "react";
 import type { FormEvent } from "react";
-import { DashboardShell } from "../../components/DashboardShell";
 import {
-    getTerms, createTerm, getCourseOfferings, assignTeacher, getSubjects, getSections, getFaculty,
-    getPendingCorrections, resolveCorrection, bulkEnrollStudents, approveLeave,
+    Calendar,
+    UserCheck,
+    CheckSquare,
+    FileSpreadsheet,
+    Users,
+    Plus,
+    Loader2,
+    CheckCircle2,
+    AlertCircle,
+    UserPlus,
+    Clock
+} from "lucide-react";
+import { DashboardShell } from "../../components/DashboardShell";
+import type { NavItem } from "../../components/DashboardShell";
+import { DatePicker } from "../../components/ui/date-picker";
+import { FormSelect } from "../../components/ui/form-select";
+import TeacherAllotmentsTab from "../admin/TeacherAllotmentsTab";
+import UniversityTimetableTab from "../admin/UniversityTimetableTab";
+import {
+    getTerms,
+    createTerm,
+    getCourseOfferings,
+    getSubjects,
+    getFaculty,
+    getPendingCorrections,
+    resolveCorrection,
+    bulkEnrollStudents,
+    approveLeave,
 } from "../../api/hod";
-import type { Term, CourseOffering, Subject, Section, Faculty, CorrectionRequest } from "../../api/hod";
+import type {
+    Term,
+    CourseOffering,
+    Subject,
+    Faculty,
+    CorrectionRequest,
+} from "../../api/hod";
+
+const NAV: NavItem[] = [
+    { id: "setup", label: "Semester Setup", icon: <Calendar className="h-4 w-4" /> },
+    { id: "offerings", label: "Teacher Allotments", icon: <UserCheck className="h-4 w-4" /> },
+    { id: "timetable", label: "University Timetable", icon: <Clock className="h-4 w-4" /> },
+    { id: "enrollment", label: "Bulk Enrollment", icon: <UserPlus className="h-4 w-4" /> },
+    { id: "corrections", label: "Corrections Queue", icon: <CheckSquare className="h-4 w-4" /> },
+    { id: "leaves", label: "Leave Approval", icon: <FileSpreadsheet className="h-4 w-4" /> },
+    { id: "data", label: "Faculty & Subjects", icon: <Users className="h-4 w-4" /> },
+];
 
 export default function HodDashboard() {
-    const [activeTab, setActiveTab] = useState<"setup" | "offerings" | "data" | "queues">("setup");
+    const [activeTab, setActiveTab] = useState("setup");
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+    const [submitting, setSubmitting] = useState(false);
 
     // Data lists
     const [terms, setTerms] = useState<Term[]>([]);
     const [courseOfferings, setCourseOfferings] = useState<CourseOffering[]>([]);
     const [subjects, setSubjects] = useState<Subject[]>([]);
-    const [sections, setSections] = useState<Section[]>([]);
     const [faculty, setFaculty] = useState<Faculty[]>([]);
+    const [corrections, setCorrections] = useState<CorrectionRequest[]>([]);
 
     // Form States
     const [termName, setTermName] = useState("");
@@ -25,34 +67,30 @@ export default function HodDashboard() {
     const [endDate, setEndDate] = useState("");
     const [isActiveTerm, setIsActiveTerm] = useState(false);
 
-    const [selectedTermId, setSelectedTermId] = useState<number | "">("");
-    const [selectedSectionId, setSelectedSectionId] = useState<number | "">("");
-    const [selectedSubjectId, setSelectedSubjectId] = useState<number | "">("");
-    const [selectedTeacherId, setSelectedTeacherId] = useState<number | "">("");
-
-    const [corrections, setCorrections] = useState<CorrectionRequest[]>([]);
     const [enrollOfferingId, setEnrollOfferingId] = useState<number | "">("");
     const [enrollStudentIds, setEnrollStudentIds] = useState("");
     const [leaveId, setLeaveId] = useState("");
 
     const fetchAllData = async () => {
         try {
-            const [termsData, offeringsData, subjectsData, sectionsData, facultyData, correctionsData] = await Promise.all([
-                getTerms(),
-                getCourseOfferings(),
-                getSubjects(),
-                getSections(),
-                getFaculty(),
-                getPendingCorrections(),
-            ]);
-            setTerms(termsData);
-            setCourseOfferings(offeringsData);
-            setSubjects(subjectsData);
-            setSections(sectionsData);
-            setFaculty(facultyData);
-            setCorrections(correctionsData);
+            const [termsData, offeringsData, subjectsData, facultyData, correctionsData] =
+                await Promise.all([
+                    getTerms(),
+                    getCourseOfferings(),
+                    getSubjects(),
+                    getFaculty(),
+                    getPendingCorrections(),
+                ]);
+            setTerms(termsData ?? []);
+            setCourseOfferings(offeringsData ?? []);
+            setSubjects(subjectsData ?? []);
+            setFaculty(facultyData ?? []);
+            setCorrections(correctionsData ?? []);
         } catch (err) {
-            setMessage({ type: "error", text: err instanceof Error ? err.message : "Error fetching data" });
+            setMessage({
+                type: "error",
+                text: err instanceof Error ? err.message : "Error fetching department data",
+            });
         }
     };
 
@@ -63,43 +101,24 @@ export default function HodDashboard() {
     const handleCreateTerm = async (e: FormEvent) => {
         e.preventDefault();
         setMessage(null);
+        setSubmitting(true);
         try {
-            await createTerm({ name: termName, start_date: startDate, end_date: endDate, is_active: isActiveTerm });
-            setMessage({ type: "success", text: "Term created successfully!" });
+            await createTerm({
+                name: termName,
+                start_date: startDate,
+                end_date: endDate,
+                is_active: isActiveTerm,
+            });
+            setMessage({ type: "success", text: "Academic semester established successfully!" });
             setTermName("");
             setStartDate("");
             setEndDate("");
             setIsActiveTerm(false);
             fetchAllData();
         } catch (err) {
-            setMessage({ type: "error", text: err instanceof Error ? err.message : "Error creating term" });
-        }
-    };
-
-    const handleAssignTeacher = async (e: FormEvent) => {
-        e.preventDefault();
-        setMessage(null);
-
-        if (!selectedTermId || !selectedSectionId || !selectedSubjectId || !selectedTeacherId) {
-            setMessage({ type: "error", text: "Please fill all required fields" });
-            return;
-        }
-
-        try {
-            await assignTeacher({
-                term_id: Number(selectedTermId),
-                section_id: Number(selectedSectionId),
-                subject_id: Number(selectedSubjectId),
-                teacher_id: Number(selectedTeacherId),
-            });
-            setMessage({ type: "success", text: "Teacher assigned to class successfully!" });
-            setSelectedTermId("");
-            setSelectedSectionId("");
-            setSelectedSubjectId("");
-            setSelectedTeacherId("");
-            fetchAllData();
-        } catch (err) {
-            setMessage({ type: "error", text: err instanceof Error ? err.message : "Error assigning teacher" });
+            setMessage({ type: "error", text: err instanceof Error ? err.message : "Error creating semester" });
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -107,28 +126,42 @@ export default function HodDashboard() {
         setMessage(null);
         try {
             await resolveCorrection(id, decision);
-            setMessage({ type: "success", text: `Correction #${id} ${decision.toLowerCase()}` });
+            setMessage({ type: "success", text: `Correction request #${id} marked as ${decision}` });
             fetchAllData();
         } catch (err) {
-            setMessage({ type: "error", text: err instanceof Error ? err.message : "Error resolving correction" });
+            setMessage({
+                type: "error",
+                text: err instanceof Error ? err.message : "Error resolving correction",
+            });
         }
     };
 
     const handleBulkEnroll = async (e: FormEvent) => {
         e.preventDefault();
         setMessage(null);
-        const ids = enrollStudentIds.split(",").map((s) => Number(s.trim())).filter((n) => !Number.isNaN(n));
+        const ids = enrollStudentIds
+            .split(",")
+            .map((s) => Number(s.trim()))
+            .filter((n) => !Number.isNaN(n) && n > 0);
+
         if (!enrollOfferingId || ids.length === 0) {
-            setMessage({ type: "error", text: "Pick a course offering and at least one valid student ID" });
+            setMessage({ type: "error", text: "Select a course offering and enter at least one valid student ID" });
             return;
         }
+
+        setSubmitting(true);
         try {
-            await bulkEnrollStudents({ course_offering_id: Number(enrollOfferingId), student_ids: ids });
-            setMessage({ type: "success", text: `Enrolled ${ids.length} student(s)` });
+            await bulkEnrollStudents({
+                course_offering_id: Number(enrollOfferingId),
+                student_ids: ids,
+            });
+            setMessage({ type: "success", text: `Enrolled ${ids.length} student(s) into class successfully!` });
             setEnrollOfferingId("");
             setEnrollStudentIds("");
         } catch (err) {
             setMessage({ type: "error", text: err instanceof Error ? err.message : "Error enrolling students" });
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -137,160 +170,149 @@ export default function HodDashboard() {
         setMessage(null);
         const id = Number(leaveId);
         if (!id) {
-            setMessage({ type: "error", text: "Enter a valid leave ID" });
+            setMessage({ type: "error", text: "Enter a valid numeric Leave Request ID" });
             return;
         }
+
+        setSubmitting(true);
         try {
             await approveLeave(id);
-            setMessage({ type: "success", text: `Leave #${id} approved` });
+            setMessage({ type: "success", text: `Leave Request #${id} verified and approved. Attendance audit logs updated.` });
             setLeaveId("");
         } catch (err) {
-            setMessage({ type: "error", text: err instanceof Error ? err.message : "Error approving leave" });
+            setMessage({ type: "error", text: err instanceof Error ? err.message : "Error approving leave request" });
+        } finally {
+            setSubmitting(false);
         }
     };
 
     return (
-        <DashboardShell title="HOD Dashboard">
-            <div className="space-y-6">
-                {/* Nav Tabs */}
-                <div className="flex border-b border-slate-200 space-x-4">
-                    <button
-                        onClick={() => setActiveTab("setup")}
-                        className={`py-2 px-4 text-sm font-medium border-b-2 -mb-px transition ${activeTab === "setup"
-                            ? "border-slate-800 text-slate-800 font-semibold"
-                            : "border-transparent text-slate-500 hover:text-slate-700"
-                            }`}
-                    >
-                        Term Setup
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("offerings")}
-                        className={`py-2 px-4 text-sm font-medium border-b-2 -mb-px transition ${activeTab === "offerings"
-                            ? "border-slate-800 text-slate-800 font-semibold"
-                            : "border-transparent text-slate-500 hover:text-slate-700"
-                            }`}
-                    >
-                        Assign Teacher / Offerings
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("data")}
-                        className={`py-2 px-4 text-sm font-medium border-b-2 -mb-px transition ${activeTab === "data"
-                            ? "border-slate-800 text-slate-800 font-semibold"
-                            : "border-transparent text-slate-500 hover:text-slate-700"
-                            }`}
-                    >
-                        Faculty & Subjects Data
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("queues")}
-                        className={`py-2 px-4 text-sm font-medium border-b-2 -mb-px transition ${activeTab === "queues"
-                            ? "border-slate-800 text-slate-800 font-semibold"
-                            : "border-transparent text-slate-500 hover:text-slate-700"
-                            }`}
-                    >
-                        Corrections, Enrollment & Leaves
-                    </button>
-                </div>
-
+        <DashboardShell
+            title="HOD Department Portal"
+            nav={NAV}
+            active={activeTab}
+            onSelect={setActiveTab}
+        >
+            <div className="space-y-6 animate-in fade-in duration-500">
+                {/* Status Message */}
                 {message && (
                     <div
-                        className={`p-4 rounded text-sm ${message.type === "success"
-                            ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                            : "bg-red-50 text-red-800 border border-red-200"
-                            }`}
+                        className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2.5 border ${
+                            message.type === "success"
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                : "bg-red-50 text-red-800 border-red-200"
+                        }`}
                     >
-                        {message.text}
+                        {message.type === "success" ? (
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                        ) : (
+                            <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />
+                        )}
+                        <span>{message.text}</span>
                     </div>
                 )}
 
-                {/* Tab 1: Term Setup */}
+                {/* Tab 1: Semester Setup */}
                 {activeTab === "setup" && (
                     <div className="space-y-6">
-                        <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
-                            <h2 className="text-lg font-semibold text-slate-800 mb-4">Create Academic Term</h2>
+                        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+                            <div className="border-b border-slate-100 pb-3">
+                                <h2 className="text-base font-black text-slate-800 tracking-tight">Create Semester</h2>
+                                <p className="text-xs text-slate-400 font-medium">Configure semester boundaries and active registration semester.</p>
+                            </div>
+
                             <form onSubmit={handleCreateTerm} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Term Name</label>
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 mb-1 block">
+                                        Semester Name
+                                    </label>
                                     <input
                                         type="text"
                                         required
                                         value={termName}
                                         onChange={(e) => setTermName(e.target.value)}
                                         placeholder="Spring 2026"
-                                        className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-800"
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-500 outline-none transition-all"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Start Date</label>
-                                    <input
-                                        type="date"
+                                    <DatePicker
+                                        label="Start Date"
                                         required
                                         value={startDate}
-                                        onChange={(e) => setStartDate(e.target.value)}
-                                        className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-800"
+                                        onChange={setStartDate}
+                                        placeholder="Pick start date..."
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1">End Date</label>
-                                    <input
-                                        type="date"
+                                    <DatePicker
+                                        label="End Date"
                                         required
                                         value={endDate}
-                                        onChange={(e) => setEndDate(e.target.value)}
-                                        className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-800"
+                                        onChange={setEndDate}
+                                        placeholder="Pick end date..."
                                     />
                                 </div>
 
-                                <div className="flex items-center space-x-2 pt-6">
-                                    <input
-                                        type="checkbox"
-                                        id="isActive"
-                                        checked={isActiveTerm}
-                                        onChange={(e) => setIsActiveTerm(e.target.checked)}
-                                        className="rounded text-slate-800 focus:ring-slate-800 h-4 w-4"
-                                    />
-                                    <label htmlFor="isActive" className="text-sm font-medium text-slate-700">
-                                        Set as Active Term
+                                <div className="flex items-center gap-2 pt-6">
+                                    <label className="flex items-center gap-2.5 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={isActiveTerm}
+                                            onChange={(e) => setIsActiveTerm(e.target.checked)}
+                                            className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                        />
+                                        <span className="text-xs font-bold text-slate-700">Set as Active Semester</span>
                                     </label>
                                 </div>
 
-                                <div className="md:col-span-2 lg:col-span-4 flex justify-end">
+                                <div className="md:col-span-2 lg:col-span-4 flex justify-end pt-2">
                                     <button
                                         type="submit"
-                                        className="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2 rounded text-sm transition"
+                                        disabled={submitting}
+                                        className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-blue-500/25 flex items-center gap-2"
                                     >
-                                        Create Term
+                                        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                                        <span>Establish Semester</span>
                                     </button>
                                 </div>
                             </form>
                         </div>
 
-                        <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                            <div className="p-4 border-b border-slate-200 font-semibold text-slate-800">Academic Terms</div>
-                            <table className="w-full text-left border-collapse text-sm">
-                                <thead>
-                                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium">
-                                        <th className="p-3">ID</th>
-                                        <th className="p-3">Name</th>
-                                        <th className="p-3">Start Date</th>
-                                        <th className="p-3">End Date</th>
-                                        <th className="p-3">Status</th>
+                        {/* Semesters Table */}
+                        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+                            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Configured Semesters</h3>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total: {terms.length}</span>
+                            </div>
+                            <table className="w-full text-xs text-left">
+                                <thead className="bg-slate-50/70 text-slate-400 font-bold text-[10px] uppercase tracking-widest border-b border-slate-100">
+                                    <tr>
+                                        <th className="px-6 py-4">ID</th>
+                                        <th className="px-6 py-4">Semester Label</th>
+                                        <th className="px-6 py-4">Start Date</th>
+                                        <th className="px-6 py-4">End Date</th>
+                                        <th className="px-6 py-4 text-center">Active Status</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-100">
+                                <tbody className="divide-y divide-slate-100 font-medium">
                                     {terms.map((t) => (
-                                        <tr key={t.id}>
-                                            <td className="p-3 font-mono text-xs text-slate-500">{t.id}</td>
-                                            <td className="p-3 font-medium text-slate-800">{t.name}</td>
-                                            <td className="p-3 text-slate-600">{t.start_date}</td>
-                                            <td className="p-3 text-slate-600">{t.end_date}</td>
-                                            <td className="p-3">
+                                        <tr key={t.id} className="hover:bg-slate-50/60 transition-colors">
+                                            <td className="px-6 py-4 font-mono text-slate-400">#{t.id}</td>
+                                            <td className="px-6 py-4 font-bold text-slate-800">{t.name}</td>
+                                            <td className="px-6 py-4 text-slate-600">{t.start_date}</td>
+                                            <td className="px-6 py-4 text-slate-600">{t.end_date}</td>
+                                            <td className="px-6 py-4 text-center">
                                                 <span
-                                                    className={`px-2 py-0.5 text-xs font-semibold rounded ${t.is_active ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"
-                                                        }`}
+                                                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-xl text-[9px] font-black uppercase tracking-wider ${
+                                                        t.is_active
+                                                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                                            : "bg-slate-100 text-slate-500 border border-slate-200"
+                                                    }`}
                                                 >
+                                                    <span className={`h-1.5 w-1.5 rounded-full ${t.is_active ? "bg-emerald-500" : "bg-slate-400"}`} />
                                                     {t.is_active ? "Active" : "Inactive"}
                                                 </span>
                                             </td>
@@ -302,247 +324,203 @@ export default function HodDashboard() {
                     </div>
                 )}
 
-                {/* Tab 2: Assign Teacher */}
+                {/* Tab 2: Course Offerings & Teacher Allotments */}
                 {activeTab === "offerings" && (
-                    <div className="space-y-6">
-                        <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
-                            <h2 className="text-lg font-semibold text-slate-800 mb-4">Assign Teacher To Class</h2>
-                            <form onSubmit={handleAssignTeacher} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Academic Term</label>
-                                    <select
-                                        value={selectedTermId}
-                                        onChange={(e) => setSelectedTermId(e.target.value ? Number(e.target.value) : "")}
-                                        className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white"
-                                    >
-                                        <option value="">Select Term</option>
-                                        {terms.map((t) => (
-                                            <option key={t.id} value={t.id}>{t.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                    <TeacherAllotmentsTab readOnly={false} />
+                )}
 
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Section</label>
-                                    <select
-                                        value={selectedSectionId}
-                                        onChange={(e) => setSelectedSectionId(e.target.value ? Number(e.target.value) : "")}
-                                        className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white"
-                                    >
-                                        <option value="">Select Section</option>
-                                        {sections.map((s) => (
-                                            <option key={s.id} value={s.id}>{s.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                {/* Tab: University Timetable (Samay Portal) */}
+                {activeTab === "timetable" && (
+                    <UniversityTimetableTab />
+                )}
 
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Subject</label>
-                                    <select
-                                        value={selectedSubjectId}
-                                        onChange={(e) => setSelectedSubjectId(e.target.value ? Number(e.target.value) : "")}
-                                        className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white"
-                                    >
-                                        <option value="">Select Subject</option>
-                                        {subjects.map((sub) => (
-                                            <option key={sub.id} value={sub.id}>{sub.course_code} - {sub.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Teacher</label>
-                                    <select
-                                        value={selectedTeacherId}
-                                        onChange={(e) => setSelectedTeacherId(e.target.value ? Number(e.target.value) : "")}
-                                        className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white"
-                                    >
-                                        <option value="">Select Faculty</option>
-                                        {faculty.map((f) => (
-                                            <option key={f.id} value={f.id}>{f.full_name} ({f.email})</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="md:col-span-2 flex justify-end mt-2">
-                                    <button
-                                        type="submit"
-                                        className="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2 rounded text-sm transition"
-                                    >
-                                        Assign Course Offering
-                                    </button>
-                                </div>
-                            </form>
+                {/* Tab 3: Bulk Enrollment */}
+                {activeTab === "enrollment" && (
+                    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+                        <div className="border-b border-slate-100 pb-3">
+                            <h2 className="text-base font-black text-slate-800 tracking-tight">Bulk Student Enrollment</h2>
+                            <p className="text-xs text-slate-400 font-medium">Link student rosters to course offerings in bulk.</p>
                         </div>
 
-                        <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                            <div className="p-4 border-b border-slate-200 font-semibold text-slate-800">Course Offerings</div>
-                            <table className="w-full text-left border-collapse text-sm">
-                                <thead>
-                                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium">
-                                        <th className="p-3">ID</th>
-                                        <th className="p-3">Term</th>
-                                        <th className="p-3">Section</th>
-                                        <th className="p-3">Subject</th>
-                                        <th className="p-3">Teacher</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {courseOfferings.map((co) => (
-                                        <tr key={co.id}>
-                                            <td className="p-3 font-mono text-xs text-slate-500">{co.id}</td>
-                                            <td className="p-3 text-slate-700">{co.term_name}</td>
-                                            <td className="p-3 text-slate-700">{co.section_name}</td>
-                                            <td className="p-3 font-medium text-slate-800">{co.subject_name}</td>
-                                            <td className="p-3 text-slate-700">{co.teacher_name}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                        <form onSubmit={handleBulkEnroll} className="space-y-4">
+                            <div>
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 mb-1 block">
+                                    Select Target Course Offering
+                                </label>
+                                <FormSelect
+                                    value={enrollOfferingId}
+                                    onChange={(val) => setEnrollOfferingId(val ? Number(val) : "")}
+                                    placeholder="-- Choose Class / Section / Teacher --"
+                                    options={courseOfferings.map((co) => ({
+                                        value: co.id,
+                                        label: `[${co.section_name}] ${co.subject_name} — Faculty: ${co.teacher_name} (${co.term_name})`,
+                                    }))}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 mb-1 block">
+                                    Student User IDs (Comma Separated)
+                                </label>
+                                <textarea
+                                    rows={4}
+                                    required
+                                    value={enrollStudentIds}
+                                    onChange={(e) => setEnrollStudentIds(e.target.value)}
+                                    placeholder="101, 102, 103, 104, 105"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono font-medium focus:bg-white outline-none transition-all"
+                                />
+                                <p className="text-[10px] text-slate-400 mt-1">
+                                    Provide numeric user IDs belonging to active student accounts.
+                                </p>
+                            </div>
+
+                            <div className="flex justify-end pt-2">
+                                <button
+                                    type="submit"
+                                    disabled={submitting}
+                                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-blue-500/25 flex items-center gap-2"
+                                >
+                                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                                    <span>Enroll Student Roster</span>
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 )}
 
-                {/* Tab 3: Data Overview */}
-                {activeTab === "data" && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                            <h3 className="font-semibold text-slate-800 mb-3">Faculty List</h3>
-                            <ul className="divide-y divide-slate-100 text-sm">
-                                {faculty.map((f) => (
-                                    <li key={f.id} className="py-2 flex justify-between items-center">
-                                        <div>
-                                            <div className="font-medium text-slate-800">{f.full_name}</div>
-                                            <div className="text-xs text-slate-500">{f.email}</div>
-                                        </div>
-                                        <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">{f.role}</span>
-                                    </li>
-                                ))}
-                            </ul>
+                {/* Tab 4: Corrections Queue */}
+                {activeTab === "corrections" && (
+                    <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+                        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Pending Attendance Corrections</h3>
+                                <p className="text-[11px] text-slate-400 font-medium mt-0.5">Time-limited 7-day correction window for teacher requests</p>
+                            </div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pending: {corrections.length}</span>
+                        </div>
+                        <table className="w-full text-xs text-left">
+                            <thead className="bg-slate-50/70 text-slate-400 font-bold text-[10px] uppercase tracking-widest border-b border-slate-100">
+                                <tr>
+                                    <th className="px-6 py-4">Submitted By</th>
+                                    <th className="px-6 py-4">Proposed Status</th>
+                                    <th className="px-6 py-4">Reason</th>
+                                    <th className="px-6 py-4 text-right">Action Decision</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-medium">
+                                {corrections.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-12 text-center text-slate-400 font-bold uppercase tracking-widest">
+                                            No pending correction requests.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    corrections.map((c) => (
+                                        <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
+                                            <td className="px-6 py-4 font-bold text-slate-800">{c.requested_by_name}</td>
+                                            <td className="px-6 py-4">
+                                                <span className="px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+                                                    {c.proposed_status}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-slate-600">{c.reason}</td>
+                                            <td className="px-6 py-4 text-right space-x-2">
+                                                <button
+                                                    onClick={() => handleResolveCorrection(c.id, "APPROVED")}
+                                                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+                                                >
+                                                    Approve
+                                                </button>
+                                                <button
+                                                    onClick={() => handleResolveCorrection(c.id, "REJECTED")}
+                                                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+                                                >
+                                                    Reject
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* Tab 5: Leave Approval */}
+                {activeTab === "leaves" && (
+                    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+                        <div className="border-b border-slate-100 pb-3">
+                            <h2 className="text-base font-black text-slate-800 tracking-tight">Approve Medical Leave Request</h2>
+                            <p className="text-xs text-slate-400 font-medium">
+                                Review student supporting medical certificates and re-classify historical absent records to approved leave.
+                            </p>
                         </div>
 
-                        <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                            <h3 className="font-semibold text-slate-800 mb-3">Subjects & Sections</h3>
-                            <div className="space-y-2">
-                                {subjects.map((s) => (
-                                    <div key={s.id} className="p-2 bg-slate-50 rounded flex justify-between text-xs">
-                                        <span className="font-medium text-slate-700">{s.course_code} - {s.name}</span>
-                                        {s.is_elective && <span className="text-slate-400">Elective</span>}
+                        <form onSubmit={handleApproveLeave} className="max-w-md space-y-4">
+                            <div>
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 mb-1 block">
+                                    Leave Request ID
+                                </label>
+                                <input
+                                    type="number"
+                                    required
+                                    value={leaveId}
+                                    onChange={(e) => setLeaveId(e.target.value)}
+                                    placeholder="e.g. 1"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono font-bold focus:bg-white outline-none"
+                                />
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={submitting}
+                                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-blue-500/25 flex items-center gap-2"
+                            >
+                                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                                <span>Verify & Execute Approval</span>
+                            </button>
+                        </form>
+                    </div>
+                )}
+
+                {/* Tab 6: Faculty & Subjects Data */}
+                {activeTab === "data" && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
+                            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-4">Faculty Directory</h3>
+                            <div className="divide-y divide-slate-100 text-xs">
+                                {faculty.map((f) => (
+                                    <div key={f.id} className="py-3 flex items-center justify-between">
+                                        <div>
+                                            <div className="font-bold text-slate-900">{f.full_name}</div>
+                                            <div className="text-[10px] text-slate-400 font-mono">{f.email}</div>
+                                        </div>
+                                        <span className="px-2.5 py-0.5 rounded-xl text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                                            {f.role}
+                                        </span>
                                     </div>
                                 ))}
                             </div>
                         </div>
-                    </div>
-                )}
 
-                {/* Tab 4: Corrections, Bulk Enroll, Leaves */}
-                {activeTab === "queues" && (
-                    <div className="space-y-6">
-                        <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                            <div className="p-4 border-b border-slate-200 font-semibold text-slate-800">Pending Corrections</div>
-                            <table className="w-full text-left border-collapse text-sm">
-                                <thead>
-                                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium">
-                                        <th className="p-3">Requested By</th>
-                                        <th className="p-3">Proposed Status</th>
-                                        <th className="p-3">Reason</th>
-                                        <th className="p-3 text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {corrections.length === 0 ? (
-                                        <tr><td colSpan={4} className="p-4 text-center text-slate-500">No pending corrections.</td></tr>
-                                    ) : (
-                                        corrections.map((c) => (
-                                            <tr key={c.id}>
-                                                <td className="p-3 text-slate-700">{c.requested_by_name}</td>
-                                                <td className="p-3 text-slate-700">{c.proposed_status}</td>
-                                                <td className="p-3 text-slate-600">{c.reason}</td>
-                                                <td className="p-3 text-right space-x-2">
-                                                    <button
-                                                        onClick={() => handleResolveCorrection(c.id, "APPROVED")}
-                                                        className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded transition"
-                                                    >
-                                                        Approve
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleResolveCorrection(c.id, "REJECTED")}
-                                                        className="text-xs bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-2.5 py-1 rounded transition"
-                                                    >
-                                                        Reject
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
-                            <h2 className="text-lg font-semibold text-slate-800 mb-4">Bulk Enroll Students</h2>
-                            <form onSubmit={handleBulkEnroll} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="md:col-span-1">
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Course Offering</label>
-                                    <select
-                                        value={enrollOfferingId}
-                                        onChange={(e) => setEnrollOfferingId(e.target.value ? Number(e.target.value) : "")}
-                                        className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white"
-                                    >
-                                        <option value="">Select Offering</option>
-                                        {courseOfferings.map((co) => (
-                                            <option key={co.id} value={co.id}>
-                                                {co.subject_name} – {co.section_name} ({co.term_name})
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="md:col-span-2">
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1">
-                                        Student IDs (comma-separated — no lookup UI yet, enter known IDs)
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={enrollStudentIds}
-                                        onChange={(e) => setEnrollStudentIds(e.target.value)}
-                                        placeholder="101, 102, 103"
-                                        className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
-                                    />
-                                </div>
-                                <div className="md:col-span-3 flex justify-end">
-                                    <button
-                                        type="submit"
-                                        className="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2 rounded text-sm transition"
-                                    >
-                                        Enroll Students
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-
-                        <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
-                            <h2 className="text-lg font-semibold text-slate-800 mb-4">Approve Leave</h2>
-                            <p className="text-xs text-slate-500 mb-3">
-                                No endpoint yet lists pending leaves — enter a known leave ID to approve it.
-                            </p>
-                            <form onSubmit={handleApproveLeave} className="flex gap-4 items-end">
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Leave ID</label>
-                                    <input
-                                        type="number"
-                                        value={leaveId}
-                                        onChange={(e) => setLeaveId(e.target.value)}
-                                        placeholder="42"
-                                        className="border border-slate-300 rounded px-3 py-2 text-sm w-32"
-                                    />
-                                </div>
-                                <button
-                                    type="submit"
-                                    className="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2 rounded text-sm transition"
-                                >
-                                    Approve
-                                </button>
-                            </form>
+                        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
+                            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-4">Subjects & Electives</h3>
+                            <div className="divide-y divide-slate-100 text-xs">
+                                {subjects.map((s) => (
+                                    <div key={s.id} className="py-3 flex items-center justify-between">
+                                        <div>
+                                            <span className="font-mono text-blue-600 font-bold mr-2">{s.course_code}</span>
+                                            <span className="font-bold text-slate-800">{s.name}</span>
+                                        </div>
+                                        {s.is_elective && (
+                                            <span className="px-2 py-0.5 rounded-xl text-[9px] font-black uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200">
+                                                Elective
+                                            </span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 )}

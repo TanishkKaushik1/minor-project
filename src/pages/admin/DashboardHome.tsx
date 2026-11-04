@@ -1,219 +1,511 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { getDashboardStats, listDepartments, listProgrammes, listBatches } from "../../api/admin";
+/* Hallmark · app: admin-dashboard · genre: modern-minimal · tone: institutional · v2.0.0 */
+import { useEffect, useState } from "react";
+import {
+    Activity,
+    Calendar,
+    RefreshCw,
+    ShieldAlert,
+    Clock,
+    Building2,
+    BookOpen,
+    Layers,
+    FolderKanban,
+    CheckCircle2,
+    ArrowUpRight,
+    AlertCircle,
+    UserCheck,
+    GraduationCap
+} from "lucide-react";
+import {
+    getDashboardStats,
+    getActionItems,
+    getAttendancePulse,
+    getSetupHealth,
+    listDepartments,
+    listProgrammes,
+    listBatches,
+    listOfferings,
+    listTerms
+} from "../../api/admin";
+import type { DashboardStats, ActionItems, AttendancePulse, SetupHealth } from "../../api/admin";
 
-type CardData = {
-    key: string;
-    label: string;
-    value: number | null;
-    subtitle: string;
-    icon: (props: { className?: string }) => ReactNode;
-    badgeBg: string;
-    iconColor: string;
-    hoverBorder: string;
-};
+interface DashboardHomeProps {
+    onNavigate?: (tabId: string) => void;
+}
 
-// Custom SVG Icons
-const UsersIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-    </svg>
-);
+export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
+    const [stats, setStats] = useState<DashboardStats | null>(null);
+    const [actionItems, setActionItems] = useState<ActionItems | null>(null);
+    const [pulse, setPulse] = useState<AttendancePulse | null>(null);
+    const [setupHealth, setSetupHealth] = useState<SetupHealth | null>(null);
+    const [deptCount, setDeptCount] = useState<number>(0);
+    const [progCount, setProgCount] = useState<number>(0);
+    const [batchCount, setBatchCount] = useState<number>(0);
+    const [offeringCount, setOfferingCount] = useState<number>(0);
+    const [termCount, setTermCount] = useState<number>(0);
 
-const UserCheckIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-    </svg>
-);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
-const BuildingIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-    </svg>
-);
+    const loadAll = async () => {
+        setFetchError(null);
+        try {
+            const [
+                statsRes,
+                actionsRes,
+                pulseRes,
+                healthRes,
+                depts,
+                progs,
+                batches,
+                offerings,
+                terms
+            ] = await Promise.allSettled([
+                getDashboardStats(),
+                getActionItems(),
+                getAttendancePulse(),
+                getSetupHealth(),
+                listDepartments(),
+                listProgrammes(),
+                listBatches(),
+                listOfferings(),
+                listTerms()
+            ]);
 
-const AcademicCapIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 14l9-5-9-5-9 5 9 5z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0112 20.055a11.952 11.952 0 01-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" />
-    </svg>
-);
-
-const LayersIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-    </svg>
-);
-
-const AlertTriangleIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-    </svg>
-);
-
-const CloseIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-    </svg>
-);
-
-const CARD_THEMES: Record<string, Omit<CardData, "key" | "label" | "value">> = {
-    "Users": {
-        subtitle: "Total registered users",
-        icon: UsersIcon,
-        badgeBg: "bg-blue-50 group-hover:bg-blue-100/80",
-        iconColor: "text-blue-600",
-        hoverBorder: "hover:border-blue-200",
-    },
-    "Active Users": {
-        subtitle: "Currently active accounts",
-        icon: UserCheckIcon,
-        badgeBg: "bg-emerald-50 group-hover:bg-emerald-100/80",
-        iconColor: "text-emerald-600",
-        hoverBorder: "hover:border-emerald-200",
-    },
-    "Departments": {
-        subtitle: "Academic departments",
-        icon: BuildingIcon,
-        badgeBg: "bg-violet-50 group-hover:bg-violet-100/80",
-        iconColor: "text-violet-600",
-        hoverBorder: "hover:border-violet-200",
-    },
-    "Programmes": {
-        subtitle: "Offered study programmes",
-        icon: AcademicCapIcon,
-        badgeBg: "bg-amber-50 group-hover:bg-amber-100/80",
-        iconColor: "text-amber-600",
-        hoverBorder: "hover:border-amber-200",
-    },
-    "Batches": {
-        subtitle: "Active student batches",
-        icon: LayersIcon,
-        badgeBg: "bg-indigo-50 group-hover:bg-indigo-100/80",
-        iconColor: "text-indigo-600",
-        hoverBorder: "hover:border-indigo-200",
-    },
-};
-
-const count = (p: Promise<unknown[]>) => p.then((a) => a.length);
-
-export default function DashboardHome() {
-    const [cards, setCards] = useState<CardData[]>([]);
-    const [errors, setErrors] = useState<string[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [showErrorBanner, setShowErrorBanner] = useState(true);
+            if (statsRes.status === "fulfilled") setStats(statsRes.value);
+            if (actionsRes.status === "fulfilled") setActionItems(actionsRes.value);
+            if (pulseRes.status === "fulfilled") setPulse(pulseRes.value);
+            if (healthRes.status === "fulfilled") setSetupHealth(healthRes.value);
+            if (depts.status === "fulfilled") setDeptCount(depts.value?.length || 0);
+            if (progs.status === "fulfilled") setProgCount(progs.value?.length || 0);
+            if (batches.status === "fulfilled") setBatchCount(batches.value?.length || 0);
+            if (offerings.status === "fulfilled") setOfferingCount(offerings.value?.length || 0);
+            if (terms.status === "fulfilled") setTermCount(terms.value?.length || 0);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Failed to load dashboard data.";
+            setFetchError(msg);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    };
 
     useEffect(() => {
-        const stats = getDashboardStats(); // one request shared by two cards
-        const jobs: [string, Promise<number>][] = [
-            ["Users", stats.then((s) => s.total_users)],
-            ["Active Users", stats.then((s) => s.active_users)],
-            ["Departments", count(listDepartments())],
-            ["Programmes", count(listProgrammes())],
-            ["Batches", count(listBatches())],
-        ];
-
-        Promise.allSettled(jobs.map(([, p]) => p)).then((res) => {
-            const out: CardData[] = [];
-            const errs: string[] = [];
-
-            res.forEach((r, i) => {
-                const name = jobs[i][0];
-                if (r.status === "rejected") {
-                    errs.push(`${name}: ${r.reason instanceof Error ? r.reason.message : "failed to fetch"}`);
-                }
-                out.push({
-                    key: name,
-                    label: name,
-                    value: r.status === "fulfilled" ? r.value : null,
-                    ...CARD_THEMES[name],
-                });
-            });
-
-            setCards(out);
-            setErrors(errs);
-            setIsLoading(false);
-        });
+        loadAll();
     }, []);
+
+    const handleRefresh = () => {
+        setRefreshing(true);
+        loadAll();
+    };
+
+    const totalActionCount = actionItems
+        ? actionItems.pending_leave_requests + (actionItems.unassigned_courses ?? 0)
+        : 0;
 
     return (
         <div className="space-y-6">
+            {/* Top Operational Header */}
+            <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+                <div>
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                        Institutional Overview
+                    </h1>
+                    <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                        University registry status, live attendance metrics, and operational action queue.
+                    </p>
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0">
+                    {setupHealth?.active_term_name && (
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-medium shadow-2xs">
+                            <Calendar className="h-3.5 w-3.5 text-blue-700 shrink-0" aria-hidden="true" />
+                            <span>{setupHealth.active_term_name}</span>
+                        </div>
+                    )}
+
+                    <button
+                        type="button"
+                        onClick={handleRefresh}
+                        disabled={refreshing || loading}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 hover:text-slate-900 text-xs font-medium shadow-2xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        aria-label="Refresh operational metrics"
+                    >
+                        <RefreshCw
+                            className={`h-3.5 w-3.5 text-slate-500 ${refreshing ? "motion-safe:animate-spin text-blue-600" : ""}`}
+                            aria-hidden="true"
+                        />
+                        <span>{refreshing ? "Refreshing…" : "Refresh"}</span>
+                    </button>
+                </div>
+            </header>
+
             {/* Error Banner */}
-            {errors.length > 0 && showErrorBanner && (
-                <div className="relative flex items-start gap-3 p-4 rounded-xl border border-red-200 bg-red-50/90 text-red-900 shadow-sm transition-all duration-300 animate-in fade-in">
-                    <div className="p-1 rounded-lg bg-red-100 text-red-600 shrink-0 mt-0.5">
-                        <AlertTriangleIcon className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 text-sm">
-                        <h4 className="font-semibold text-red-900">Some dashboard data failed to load</h4>
-                        <ul className="mt-1.5 list-disc pl-4 space-y-1 text-xs text-red-700">
-                            {errors.map((e) => (
-                                <li key={e}>{e}</li>
-                            ))}
-                        </ul>
+            {fetchError && (
+                <div
+                    role="alert"
+                    className="p-3.5 rounded-md border border-red-200 bg-red-50 text-red-800 text-xs flex items-center justify-between gap-3"
+                >
+                    <div className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-red-600 shrink-0" aria-hidden="true" />
+                        <span>{fetchError}</span>
                     </div>
                     <button
-                        onClick={() => setShowErrorBanner(false)}
-                        className="p-1 rounded-md text-red-400 hover:text-red-700 hover:bg-red-100 transition-colors"
-                        title="Dismiss"
+                        type="button"
+                        onClick={loadAll}
+                        className="font-semibold underline hover:no-underline active:text-red-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
                     >
-                        <CloseIcon className="w-4 h-4" />
+                        Retry
                     </button>
                 </div>
             )}
 
-            {/* Dashboard Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                {isLoading ? (
-                    // Skeleton Loaders
-                    Array.from({ length: 5 }).map((_, idx) => (
-                        <div
-                            key={idx}
-                            className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm animate-pulse space-y-4"
-                        >
-                            <div className="flex items-center justify-between">
-                                <div className="h-3.5 bg-slate-200 rounded w-20"></div>
-                                <div className="w-9 h-9 bg-slate-200 rounded-xl"></div>
-                            </div>
-                            <div className="h-8 bg-slate-200 rounded w-16"></div>
-                            <div className="h-3 bg-slate-100 rounded w-28"></div>
+            {/* Metric Hairline Ledger */}
+            <section aria-labelledby="primary-metrics-heading">
+                <h2 id="primary-metrics-heading" className="sr-only">
+                    Primary Operational Metrics
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 rounded-lg overflow-hidden border border-slate-200 shadow-2xs">
+                    {/* Stat 1: Live Attendance Rate */}
+                    <div className="bg-white p-5 flex flex-col justify-between">
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-slate-500">
+                                Today’s attendance rate
+                            </span>
+                            <Activity className="h-4 w-4 text-slate-400 shrink-0" aria-hidden="true" />
                         </div>
-                    ))
-                ) : (
-                    // Loaded Metric Cards
-                    cards.map((c, index) => {
-                        const IconComponent = c.icon;
-                        return (
-                            <div
-                                key={c.key}
-                                style={{
-                                    animationDelay: `${index * 75}ms`,
-                                    animationFillMode: "backwards",
-                                }}
-                                className={`group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all duration-300 transform hover:-translate-y-1 ${c.hoverBorder} flex flex-col justify-between`}
-                            >
-                                <div className="flex items-center justify-between gap-2">
-                                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                        {c.label}
-                                    </span>
-                                    <div
-                                        className={`p-2.5 rounded-xl transition-transform duration-300 group-hover:scale-110 ${c.badgeBg} ${c.iconColor}`}
-                                    >
-                                        <IconComponent className="w-5 h-5" />
-                                    </div>
-                                </div>
-
-                                <div className="mt-3">
-                                    <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                                        {c.value !== null ? c.value.toLocaleString() : "—"}
-                                    </div>
-                                    <div className="text-xs font-medium text-slate-400 mt-1 transition-colors group-hover:text-slate-500">
-                                        {c.subtitle}
-                                    </div>
-                                </div>
+                        <div className="mt-3">
+                            <div className="text-2xl sm:text-3xl font-semibold tabular-nums text-slate-900 tracking-tight">
+                                {loading ? (
+                                    <span className="inline-block w-16 h-8 bg-slate-200 rounded motion-safe:animate-pulse motion-reduce:bg-slate-200" />
+                                ) : pulse ? (
+                                    `${pulse.overall_attendance_today}%`
+                                ) : (
+                                    "—"
+                                )}
                             </div>
-                        );
-                    })
-                )}
+                            <div className="mt-1 text-xs text-slate-500">
+                                {loading ? (
+                                    <span className="inline-block w-28 h-3.5 bg-slate-100 rounded motion-safe:animate-pulse motion-reduce:bg-slate-100" />
+                                ) : (
+                                    `${pulse?.classes_held_today ?? 0} class sessions marked`
+                                )}
+                            </div>
+                        </div>
+                        <div className="mt-3.5 w-full bg-slate-100 rounded-full h-1 overflow-hidden" aria-hidden="true">
+                            <div
+                                className="bg-blue-600 h-1 rounded-full transition-transform origin-left duration-300 motion-reduce:transition-none"
+                                style={{ transform: `scaleX(${Math.min(pulse?.overall_attendance_today || 0, 100) / 100})` }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Stat 2: Enrolled Students */}
+                    <div className="bg-white p-5 flex flex-col justify-between">
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-slate-500">
+                                Enrolled students
+                            </span>
+                            <GraduationCap className="h-4 w-4 text-slate-400 shrink-0" aria-hidden="true" />
+                        </div>
+                        <div className="mt-3">
+                            <div className="text-2xl sm:text-3xl font-semibold tabular-nums text-slate-900 tracking-tight">
+                                {loading ? (
+                                    <span className="inline-block w-20 h-8 bg-slate-200 rounded motion-safe:animate-pulse motion-reduce:bg-slate-200" />
+                                ) : (
+                                    stats?.total_students.toLocaleString() ?? "—"
+                                )}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                                {loading ? (
+                                    <span className="inline-block w-32 h-3.5 bg-slate-100 rounded motion-safe:animate-pulse motion-reduce:bg-slate-100" />
+                                ) : (
+                                    `${stats?.total_users ?? 0} registered user profiles`
+                                )}
+                            </div>
+                        </div>
+                        <div className="mt-3.5 text-xs text-slate-400">
+                            Active in university portal
+                        </div>
+                    </div>
+
+                    {/* Stat 3: Teaching Faculty */}
+                    <div className="bg-white p-5 flex flex-col justify-between">
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-slate-500">
+                                Teaching faculty
+                            </span>
+                            <UserCheck className="h-4 w-4 text-slate-400 shrink-0" aria-hidden="true" />
+                        </div>
+                        <div className="mt-3">
+                            <div className="text-2xl sm:text-3xl font-semibold tabular-nums text-slate-900 tracking-tight">
+                                {loading ? (
+                                    <span className="inline-block w-16 h-8 bg-slate-200 rounded motion-safe:animate-pulse motion-reduce:bg-slate-200" />
+                                ) : (
+                                    stats?.total_teachers.toLocaleString() ?? "—"
+                                )}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                                {loading ? (
+                                    <span className="inline-block w-28 h-3.5 bg-slate-100 rounded motion-safe:animate-pulse motion-reduce:bg-slate-100" />
+                                ) : (
+                                    `${stats?.total_coordinators ?? 0} coordinators & HODs`
+                                )}
+                            </div>
+                        </div>
+                        <div className="mt-3.5 text-xs text-slate-400">
+                            Course allocation verified
+                        </div>
+                    </div>
+
+                    {/* Stat 4: Attendance Submission Activity */}
+                    <div
+                        onClick={() => onNavigate?.("logs")}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                onNavigate?.("logs");
+                            }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        className="bg-white p-5 flex flex-col justify-between cursor-pointer hover:bg-slate-50/70 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                        aria-label="View live attendance submission logs"
+                    >
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-slate-500">
+                                Attendance activity
+                            </span>
+                            <Clock className="h-4 w-4 text-slate-400 shrink-0" aria-hidden="true" />
+                        </div>
+                        <div className="mt-3">
+                            <div className="text-2xl sm:text-3xl font-semibold tabular-nums text-slate-900 tracking-tight flex items-baseline gap-2">
+                                {loading ? (
+                                    <span className="inline-block w-14 h-8 bg-slate-200 rounded motion-safe:animate-pulse motion-reduce:bg-slate-200" />
+                                ) : (
+                                    (pulse?.classes_held_today ?? 0).toLocaleString()
+                                )}
+                                <span className="text-xs font-normal text-slate-500">sessions today</span>
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                                {loading ? (
+                                    <span className="inline-block w-32 h-3.5 bg-slate-100 rounded motion-safe:animate-pulse motion-reduce:bg-slate-100" />
+                                ) : (
+                                    `${pulse?.overall_attendance_today ?? 0}% overall turnout`
+                                )}
+                            </div>
+                        </div>
+                        <div className="mt-3.5 text-xs text-blue-600 font-medium flex items-center gap-1">
+                            <span>View logs</span>
+                            <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Signature Section: Administrative Action Triage Ledger */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                {/* Left 2 Cols: Unified Action Queue Ledger */}
+                <section
+                    aria-labelledby="action-queue-heading"
+                    className="lg:col-span-2 rounded-lg border border-slate-200 bg-white overflow-hidden shadow-2xs"
+                >
+                    <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between gap-3 bg-slate-50/60">
+                        <div className="flex items-center gap-2.5">
+                            <ShieldAlert className="h-4 w-4 text-slate-700 shrink-0" aria-hidden="true" />
+                            <div>
+                                <h2 id="action-queue-heading" className="text-sm font-semibold text-slate-900">
+                                    Administrative Triage Queue
+                                </h2>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    Items requiring institutional verification or departmental resolution.
+                                </p>
+                            </div>
+                        </div>
+                        {totalActionCount > 0 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                                {totalActionCount} pending
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="divide-y divide-slate-100">
+                        {/* Triage Row 1: Medical Leave Requests */}
+                        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition-colors">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-slate-900">
+                                        Medical & Official Leave Requests
+                                    </span>
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                        Document review
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-500">
+                                    Student medical certificates and institutional representations uploaded via app.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0 self-start sm:self-auto">
+                                <span className="text-base font-semibold tabular-nums text-slate-900 min-w-8 text-right">
+                                    {loading ? "…" : (actionItems?.pending_leave_requests ?? 0)}
+                                </span>
+                                <span className="text-xs text-slate-400 px-3 py-1.5">
+                                    HOD Queue
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Triage Row 2: Unassigned Course Offerings */}
+                        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition-colors">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-slate-900">
+                                        Unassigned Course Offerings
+                                    </span>
+                                    {(actionItems?.unassigned_courses ?? 0) > 0 ? (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-red-50 text-red-700 border border-red-200">
+                                            Needs faculty
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                            All assigned
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-xs text-slate-500">
+                                    Class sections in the active semester without an allotted instructor.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0 self-start sm:self-auto">
+                                <span className="text-base font-semibold tabular-nums text-slate-900 min-w-8 text-right">
+                                    {loading ? "…" : (actionItems?.unassigned_courses ?? 0)}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => onNavigate?.("teacher-allotments")}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 active:bg-slate-100 text-xs font-medium text-slate-700 shadow-2xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                                >
+                                    <span>Allotments</span>
+                                    <ArrowUpRight className="h-3 w-3 text-slate-400" aria-hidden="true" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Triage Row 4: Unmapped Student Registrations */}
+                        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition-colors">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-slate-900">
+                                        Unmapped Student Profiles
+                                    </span>
+                                    {(actionItems?.unmapped_students ?? 0) > 0 ? (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                            Missing subjects
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                            Fully mapped
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-xs text-slate-500">
+                                    Enrolled students without subject or course-offering mapping this semester.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0 self-start sm:self-auto">
+                                <span className="text-base font-semibold tabular-nums text-slate-900 min-w-8 text-right">
+                                    {loading ? "…" : (actionItems?.unmapped_students ?? 0)}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => onNavigate?.("students")}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 active:bg-slate-100 text-xs font-medium text-slate-700 shadow-2xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                                >
+                                    <span>Students</span>
+                                    <ArrowUpRight className="h-3 w-3 text-slate-400" aria-hidden="true" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Right Col: Academic Entity Hierarchy Table */}
+                <section
+                    aria-labelledby="hierarchy-heading"
+                    className="rounded-lg border border-slate-200 bg-white overflow-hidden shadow-2xs"
+                >
+                    <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50/60">
+                        <h2 id="hierarchy-heading" className="text-sm font-semibold text-slate-900">
+                            Academic Hierarchy
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                            Configured entities across the university registry.
+                        </p>
+                    </div>
+
+                    <table className="w-full text-xs text-left">
+                        <caption className="sr-only">Academic Hierarchy Counts</caption>
+                        <thead>
+                            <tr className="border-b border-slate-100 text-slate-400">
+                                <th scope="col" className="py-2.5 px-4 font-medium">Entity</th>
+                                <th scope="col" className="py-2.5 px-4 font-medium text-right">Count</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            <tr className="hover:bg-slate-50/50 transition-colors">
+                                <th scope="row" className="py-2.5 px-4 font-normal text-slate-700 flex items-center gap-2">
+                                    <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                                    <span>Departments</span>
+                                </th>
+                                <td className="py-2.5 px-4 text-right font-semibold tabular-nums text-slate-900">
+                                    {loading ? "…" : deptCount}
+                                </td>
+                            </tr>
+                            <tr className="hover:bg-slate-50/50 transition-colors">
+                                <th scope="row" className="py-2.5 px-4 font-normal text-slate-700 flex items-center gap-2">
+                                    <BookOpen className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                                    <span>Programmes</span>
+                                </th>
+                                <td className="py-2.5 px-4 text-right font-semibold tabular-nums text-slate-900">
+                                    {loading ? "…" : progCount}
+                                </td>
+                            </tr>
+                            <tr className="hover:bg-slate-50/50 transition-colors">
+                                <th scope="row" className="py-2.5 px-4 font-normal text-slate-700 flex items-center gap-2">
+                                    <Layers className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                                    <span>Batches</span>
+                                </th>
+                                <td className="py-2.5 px-4 text-right font-semibold tabular-nums text-slate-900">
+                                    {loading ? "…" : batchCount}
+                                </td>
+                            </tr>
+                            <tr className="hover:bg-slate-50/50 transition-colors">
+                                <th scope="row" className="py-2.5 px-4 font-normal text-slate-700 flex items-center gap-2">
+                                    <FolderKanban className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                                    <span>Course offerings</span>
+                                </th>
+                                <td className="py-2.5 px-4 text-right font-semibold tabular-nums text-slate-900">
+                                    {loading ? "…" : offeringCount}
+                                </td>
+                            </tr>
+                            <tr className="hover:bg-slate-50/50 transition-colors">
+                                <th scope="row" className="py-2.5 px-4 font-normal text-slate-700 flex items-center gap-2">
+                                    <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                                    <span>Semesters</span>
+                                </th>
+                                <td className="py-2.5 px-4 text-right font-semibold tabular-nums text-slate-900">
+                                    {loading ? "…" : termCount}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div className="p-3.5 bg-slate-50/80 border-t border-slate-100 flex items-center gap-2 text-xs text-slate-600">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" aria-hidden="true" />
+                        <span>University timetable schema in sync</span>
+                    </div>
+                </section>
             </div>
         </div>
     );
