@@ -1,59 +1,68 @@
-// src/pages/coordinator/Dashboard.tsx
 import { useState, useEffect } from "react";
 import type { FormEvent } from "react";
+import {
+    Calendar,
+    UserPlus,
+    FolderKanban,
+    CheckSquare,
+    Loader2,
+    CheckCircle2,
+    AlertCircle,
+    GraduationCap
+} from "lucide-react";
 import { DashboardShell } from "../../components/DashboardShell";
+import type { NavItem } from "../../components/DashboardShell";
+import { FormSelect } from "../../components/ui/form-select";
+import TeacherAllotmentsTab from "../admin/TeacherAllotmentsTab";
+import UniversityTimetableTab from "../admin/UniversityTimetableTab";
+import {
+    listOfferings,
+    listSections,
+    bulkEnroll,
+    listPendingCorrections,
+    resolveCorrection
+} from "../../api/admin";
+import type { Offering, Section, Correction } from "../../api/admin";
 
-interface CourseOffering {
-    id: number;
-    term_name: string;
-    section_name: string;
-    subject_name: string;
-    teacher_name: string;
-}
-
-interface Section {
-    id: number;
-    name: string;
-    batch_id: number;
-    term_id: number;
-}
-
-const API_BASE = import.meta.env.VITE_API_URL || "https://laptop-f0uunm9o.taild8f6a1.ts.net/api/v1";
+const NAV: NavItem[] = [
+    { id: "timetable", label: "University Timetable", icon: <Calendar className="h-4 w-4" /> },
+    { id: "allotments", label: "Teacher Allotments", icon: <GraduationCap className="h-4 w-4" /> },
+    { id: "enrollment", label: "Bulk Enrollment", icon: <UserPlus className="h-4 w-4" /> },
+    { id: "classes", label: "Sections & Classes", icon: <FolderKanban className="h-4 w-4" /> },
+    { id: "corrections", label: "Corrections Queue", icon: <CheckSquare className="h-4 w-4" /> },
+];
 
 export default function CoordinatorDashboard() {
-    const [courseOfferings, setCourseOfferings] = useState<CourseOffering[]>([]);
+    const [activeTab, setActiveTab] = useState("timetable");
     const [sections, setSections] = useState<Section[]>([]);
-    const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+    const [offerings, setOfferings] = useState<Offering[]>([]);
+    const [corrections, setCorrections] = useState<Correction[]>([]);
 
-    // Form State
+    // Form State for Enrollment
     const [selectedOfferingId, setSelectedOfferingId] = useState<number | "">("");
     const [studentIdsInput, setStudentIdsInput] = useState("");
 
-    const getAuthHeader = () => {
-        const token = localStorage.getItem("token") || localStorage.getItem("access_token");
-        return {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token || ""}`,
-        };
-    };
+    const [submitting, setSubmitting] = useState(false);
+    const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
-    const fetchData = async () => {
-        const headers = getAuthHeader();
+    const loadInitialData = async () => {
         try {
-            const [offeringsRes, sectionsRes] = await Promise.all([
-                fetch(`${API_BASE}/web/management/course-offerings`, { headers }),
-                fetch(`${API_BASE}/web/management/sections`, { headers }),
+            const [sectionsData, offeringsData, correctionsData] = await Promise.all([
+                listSections(),
+                listOfferings(),
+                listPendingCorrections(),
             ]);
 
-            if (offeringsRes.ok) setCourseOfferings(await offeringsRes.json());
-            if (sectionsRes.ok) setSections(await sectionsRes.json());
-        } catch {
-            setMessage({ type: "error", text: "Network error loading data" });
+            setSections(sectionsData ?? []);
+            setOfferings(offeringsData ?? []);
+            setCorrections(correctionsData ?? []);
+        } catch (err) {
+            setMessage({ ok: false, text: "Failed to load coordinator data" });
         }
     };
 
     useEffect(() => {
-        fetchData();
+        loadInitialData();
     }, []);
 
     const handleBulkEnrollment = async (e: FormEvent) => {
@@ -61,151 +70,245 @@ export default function CoordinatorDashboard() {
         setMessage(null);
 
         if (!selectedOfferingId) {
-            setMessage({ type: "error", text: "Please select a course offering" });
+            setMessage({ ok: false, text: "Please select a target course offering." });
             return;
         }
 
         const studentIds = studentIdsInput
             .split(",")
-            .map((id) => id.trim())
-            .filter((id) => id.length > 0)
-            .map(Number)
-            .filter((num) => !isNaN(num));
+            .map((id) => Number(id.trim()))
+            .filter((n) => !Number.isNaN(n) && n > 0);
 
         if (studentIds.length === 0) {
-            setMessage({ type: "error", text: "Please enter valid numeric Student IDs" });
+            setMessage({ ok: false, text: "Please enter valid student IDs separated by commas." });
             return;
         }
 
+        setSubmitting(true);
         try {
-            const res = await fetch(`${API_BASE}/web/management/enrollments/bulk`, {
-                method: "POST",
-                headers: getAuthHeader(),
-                body: JSON.stringify({
-                    course_offering_id: Number(selectedOfferingId),
-                    student_ids: studentIds,
-                }),
+            const res: any = await bulkEnroll({
+                course_offering_id: Number(selectedOfferingId),
+                student_ids: studentIds,
             });
 
-            const data = await res.json().catch(() => null);
+            setMessage({
+                ok: true,
+                text: res?.message || `Successfully enrolled ${studentIds.length} students!`,
+            });
+            setSelectedOfferingId("");
+            setStudentIdsInput("");
+        } catch (err) {
+            setMessage({ ok: false, text: err instanceof Error ? err.message : "Error enrolling students" });
+        } finally {
+            setSubmitting(false);
+        }
+    };
 
-            if (res.ok) {
-                setMessage({ type: "success", text: `Enrolled ${studentIds.length} students successfully!` });
-                setSelectedOfferingId("");
-                setStudentIdsInput("");
-            } else {
-                const errorDetail =
-                    data?.detail?.[0]?.msg ||
-                    (typeof data?.detail === "string" ? data.detail : null) ||
-                    `HTTP Error ${res.status}`;
-                setMessage({ type: "error", text: errorDetail });
-            }
-        } catch {
-            setMessage({ type: "error", text: "Error submitting enrollment request" });
+    const handleResolveCorrection = async (id: number, decision: "APPROVE" | "REJECT") => {
+        try {
+            await resolveCorrection(id, { decision });
+            setMessage({ ok: true, text: `Correction #${id} marked as ${decision}` });
+            const updated = await listPendingCorrections();
+            setCorrections(updated ?? []);
+        } catch (err) {
+            setMessage({ ok: false, text: err instanceof Error ? err.message : "Error resolving correction" });
         }
     };
 
     return (
-        <DashboardShell title="Coordinator Dashboard">
-            <div className="space-y-8">
+        <DashboardShell
+            title="Coordinator Portal"
+            nav={NAV}
+            active={activeTab}
+            onSelect={setActiveTab}
+        >
+            <div className="space-y-6 animate-in fade-in duration-500">
+                {/* Notification */}
                 {message && (
                     <div
-                        className={`p-4 rounded text-sm ${message.type === "success"
-                                ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                                : "bg-red-50 text-red-800 border border-red-200"
-                            }`}
+                        className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2.5 border ${
+                            message.ok
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                : "bg-red-50 text-red-800 border-red-200"
+                        }`}
                     >
-                        {message.text}
+                        {message.ok ? <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" /> : <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />}
+                        <span>{message.text}</span>
                     </div>
                 )}
 
-                {/* Bulk Student Enrollment Card */}
-                <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
-                    <h2 className="text-lg font-semibold text-slate-800 mb-4">Bulk Student Enrollment</h2>
-                    <form onSubmit={handleBulkEnrollment} className="space-y-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Select Course Offering</label>
-                            <select
-                                value={selectedOfferingId}
-                                onChange={(e) => setSelectedOfferingId(e.target.value ? Number(e.target.value) : "")}
-                                className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-slate-800"
-                            >
-                                <option value="">-- Select Class / Subject / Teacher --</option>
-                                {courseOfferings.map((co) => (
-                                    <option key={co.id} value={co.id}>
-                                        [{co.section_name}] {co.subject_name} (Teacher: {co.teacher_name})
-                                    </option>
+                {/* Tab 1: University Timetable (Samay Live) */}
+                {activeTab === "timetable" && (
+                    <UniversityTimetableTab />
+                )}
+
+                {/* Tab: Teacher Allotments */}
+                {activeTab === "allotments" && (
+                    <TeacherAllotmentsTab readOnly={true} />
+                )}
+
+                {/* Tab 2: Bulk Enrollment */}
+                {activeTab === "enrollment" && (
+                    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+                        <div className="border-b border-slate-100 pb-3">
+                            <h2 className="text-base font-black text-slate-800 tracking-tight">Bulk Student Enrollment</h2>
+                            <p className="text-xs text-slate-400 font-medium">Enroll student IDs into class offerings for the coordinator's program.</p>
+                        </div>
+
+                        <form onSubmit={handleBulkEnrollment} className="space-y-4">
+                            <div>
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 mb-1 block">
+                                    Target Course Offering
+                                </label>
+                                <FormSelect
+                                    value={selectedOfferingId}
+                                    onChange={(val) => setSelectedOfferingId(val ? Number(val) : "")}
+                                    placeholder="-- Choose Class / Section / Teacher --"
+                                    options={offerings.map((co) => ({
+                                        value: co.id,
+                                        label: `[${co.section_name}] ${co.subject_name} — Faculty: ${co.teacher_name} (${co.term_name})`,
+                                    }))}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 mb-1 block">
+                                    Student User IDs (Comma Separated)
+                                </label>
+                                <textarea
+                                    rows={4}
+                                    required
+                                    value={studentIdsInput}
+                                    onChange={(e) => setStudentIdsInput(e.target.value)}
+                                    placeholder="101, 102, 103, 104, 105"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono font-medium focus:bg-white outline-none transition-all"
+                                />
+                                <p className="text-[10px] text-slate-400 mt-1">
+                                    Provide numeric user IDs separated by commas.
+                                </p>
+                            </div>
+
+                            <div className="flex justify-end pt-2">
+                                <button
+                                    type="submit"
+                                    disabled={submitting}
+                                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-blue-500/25 flex items-center gap-2"
+                                >
+                                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                                    <span>Enroll Students</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
+
+                {/* Tab 3: Sections & Course Allocations */}
+                {activeTab === "classes" && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+                            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Configured Sections</h3>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{sections.length} Sections</span>
+                            </div>
+                            <table className="w-full text-xs text-left">
+                                <thead className="bg-slate-50/70 text-slate-400 font-bold text-[10px] uppercase tracking-widest border-b border-slate-100">
+                                    <tr>
+                                        <th className="px-5 py-3.5">ID</th>
+                                        <th className="px-5 py-3.5">Section Name</th>
+                                        <th className="px-5 py-3.5">Batch ID</th>
+                                        <th className="px-5 py-3.5">Term ID</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 font-medium">
+                                    {sections.map((s) => (
+                                        <tr key={s.id} className="hover:bg-slate-50/60 transition-colors">
+                                            <td className="px-5 py-3 font-mono text-slate-400">#{s.id}</td>
+                                            <td className="px-5 py-3 font-bold text-slate-800">{s.name}</td>
+                                            <td className="px-5 py-3 text-slate-600 font-mono">#{s.batch_id}</td>
+                                            <td className="px-5 py-3 text-slate-600 font-mono">#{s.term_id}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+                            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Course Offerings</h3>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{offerings.length} Offerings</span>
+                            </div>
+                            <div className="divide-y divide-slate-100 text-xs">
+                                {offerings.map((co) => (
+                                    <div key={co.id} className="p-4 hover:bg-slate-50/60 transition-colors">
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-bold text-slate-900">{co.subject_name}</span>
+                                            <span className="font-bold text-blue-600">[{co.section_name}]</span>
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
+                                            <span>Teacher: <strong>{co.teacher_name}</strong></span>
+                                            <span>Term: {co.term_name}</span>
+                                        </div>
+                                    </div>
                                 ))}
-                            </select>
+                            </div>
                         </div>
+                    </div>
+                )}
 
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">
-                                Student IDs (Comma Separated)
-                            </label>
-                            <textarea
-                                rows={3}
-                                value={studentIdsInput}
-                                onChange={(e) => setStudentIdsInput(e.target.value)}
-                                placeholder="101, 102, 103, 104"
-                                className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-800 font-mono"
-                            />
-                            <p className="text-xs text-slate-400 mt-1">
-                                Provide integer IDs separated by commas.
-                            </p>
+                {/* Tab 4: Corrections Queue */}
+                {activeTab === "corrections" && (
+                    <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+                        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Pending Corrections Queue</h3>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{corrections.length} Pending</span>
                         </div>
-
-                        <div className="flex justify-end">
-                            <button
-                                type="submit"
-                                className="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2 rounded text-sm transition"
-                            >
-                                Enroll Students
-                            </button>
-                        </div>
-                    </form>
-                </div>
-
-                {/* Sections & Course Offerings */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-4">
-                        <h3 className="font-semibold text-slate-800 mb-3">Sections & Batches</h3>
-                        <table className="w-full text-left border-collapse text-sm">
-                            <thead>
-                                <tr className="bg-slate-50 border-b text-slate-600">
-                                    <th className="p-2">Section ID</th>
-                                    <th className="p-2">Name</th>
-                                    <th className="p-2">Batch ID</th>
-                                    <th className="p-2">Term ID</th>
+                        <table className="w-full text-xs text-left">
+                            <thead className="bg-slate-50/70 text-slate-400 font-bold text-[10px] uppercase tracking-widest border-b border-slate-100">
+                                <tr>
+                                    <th className="px-6 py-4">Submitted By</th>
+                                    <th className="px-6 py-4">Proposed Status</th>
+                                    <th className="px-6 py-4">Reason</th>
+                                    <th className="px-6 py-4 text-right">Action Decision</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {sections.map((s) => (
-                                    <tr key={s.id}>
-                                        <td className="p-2 font-mono text-xs text-slate-500">{s.id}</td>
-                                        <td className="p-2 font-medium text-slate-800">{s.name}</td>
-                                        <td className="p-2 text-slate-600">{s.batch_id}</td>
-                                        <td className="p-2 text-slate-600">{s.term_id}</td>
+                            <tbody className="divide-y divide-slate-100 font-medium">
+                                {corrections.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-12 text-center text-slate-400 font-bold uppercase tracking-widest">
+                                            No pending correction requests.
+                                        </td>
                                     </tr>
-                                ))}
+                                ) : (
+                                    corrections.map((c) => (
+                                        <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
+                                            <td className="px-6 py-4 font-bold text-slate-800">{c.requested_by_name}</td>
+                                            <td className="px-6 py-4">
+                                                <span className="px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+                                                    {c.suggested_status}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-slate-600">{c.reason}</td>
+                                            <td className="px-6 py-4 text-right space-x-2">
+                                                <button
+                                                    onClick={() => handleResolveCorrection(c.id, "APPROVE")}
+                                                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+                                                >
+                                                    Approve
+                                                </button>
+                                                <button
+                                                    onClick={() => handleResolveCorrection(c.id, "REJECT")}
+                                                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+                                                >
+                                                    Reject
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
                         </table>
                     </div>
-
-                    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-4">
-                        <h3 className="font-semibold text-slate-800 mb-3">Active Course Offerings</h3>
-                        <ul className="divide-y divide-slate-100 text-sm">
-                            {courseOfferings.map((co) => (
-                                <li key={co.id} className="py-2">
-                                    <div className="font-medium text-slate-800">{co.subject_name}</div>
-                                    <div className="text-xs text-slate-500">
-                                        Section: {co.section_name} | Term: {co.term_name} | Teacher: {co.teacher_name}
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                </div>
+                )}
             </div>
         </DashboardShell>
     );

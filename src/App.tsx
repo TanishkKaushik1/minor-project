@@ -10,12 +10,14 @@ const DeanDashboard = lazy(() => import("./pages/dean/Dashboard"));
 const HodDashboard = lazy(() => import("./pages/hod/Dashboard"));
 const CoordinatorDashboard = lazy(() => import("./pages/coordinator/Dashboard"));
 
-const HOME_BY_ROLE = {
+const HOME_BY_ROLE: Record<string, string> = {
     ADMIN: "/admin",
     DEAN: "/dean",
     HOD: "/hod",
     COORDINATOR: "/coordinator",
-} as const;
+    TEACHER: "/coordinator",
+    STUDENT: "/coordinator",
+};
 
 function Home() {
     const { role } = useAuth();
