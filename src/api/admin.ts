@@ -193,6 +193,8 @@ export interface AttendanceSessionItem {
     attendance_percentage: number;
     submitted_at?: string | null;
     created_at: string;
+    is_held?: boolean;
+    reason_not_held?: string | null;
 }
 
 export interface PaginatedAttendanceSessions {
@@ -296,7 +298,15 @@ export const createSection = (b: Omit<Section, "id">) => post("/sections", b);
 
 export interface Term { id: number; name: string; start_date: string; end_date: string; is_active: boolean; batch_id?: number | null }
 export type Semester = Term;
-export interface Subject { id: number; course_code: string; name: string; is_elective: boolean }
+export interface Subject {
+    id: number;
+    course_code: string;
+    name: string;
+    course_type?: string;
+    is_elective: boolean;
+    credits?: number;
+    requires_attendance?: boolean;
+}
 export interface Faculty { id: number; full_name: string; email: string; role: string }
 export interface Offering {
     id: number;
@@ -322,6 +332,7 @@ export const activateSemester = activateTerm;
 
 export const listSubjects = (): Promise<Subject[]> => apiFetch(`${M}/subjects`);
 export const createSubject = (b: Omit<Subject, "id">) => post("/subjects", b);
+export const updateSubject = (id: number, b: Partial<Omit<Subject, "id">>): Promise<Subject> => put(`/subjects/${id}`, b);
 
 export const listFaculty = (): Promise<Faculty[]> => apiFetch(`${M}/faculty?_t=${Date.now()}`);
 

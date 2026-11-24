@@ -629,7 +629,7 @@ export default function LogsPage() {
                                                     {isCancelled(s.status) || isRescheduled(s.status) ? (
                                                         <span
                                                             className="text-xs text-slate-400 font-medium px-2 py-1 inline-block"
-                                                            title={isCancelled(s.status) ? "Session cancelled (no roster)" : "Class rescheduled"}
+                                                            title={s.reason_not_held || (isCancelled(s.status) ? "Session cancelled (no roster)" : "Class postponed / rescheduled")}
                                                         >
                                                             —
                                                         </span>
@@ -1047,7 +1047,7 @@ export default function LogsPage() {
                                         Session Cancelled
                                     </h3>
                                     <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                                        This lecture was marked as cancelled by the instructor, so no student attendance was recorded.
+                                        {rosterSession?.reason_not_held || "This lecture was marked as cancelled by the instructor, so no student attendance was recorded."}
                                     </p>
                                 </div>
                             ) : isRescheduled(rosterSession?.status) ? (
@@ -1056,10 +1056,10 @@ export default function LogsPage() {
                                         <Clock className="h-6 w-6" />
                                     </div>
                                     <h3 className="text-sm font-semibold text-slate-800 mb-1">
-                                        Session Rescheduled
+                                        Session Postponed / Rescheduled
                                     </h3>
                                     <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                                        This lecture was rescheduled to another time slot. Student attendance will be taken during the rescheduled class.
+                                        {rosterSession?.reason_not_held || "This lecture was postponed to a later date. Student attendance will be taken during the make-up class."}
                                     </p>
                                 </div>
                             ) : rosterLoading ? (

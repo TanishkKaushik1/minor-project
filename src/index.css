@@ -236,6 +236,11 @@ body {
 /* ==========================================================================
    PRINT STYLES: University Timetable Guaranteed 1-Page Landscape Fit
    ========================================================================== */
+@page {
+  size: A4 landscape;
+  margin: 3mm 4mm 3mm 4mm;
+}
+
 @media print {
   @page {
     size: A4 landscape;
@@ -254,7 +259,7 @@ body {
     color: #0f172a !important;
     overflow: visible !important;
     height: auto !important;
-    font-size: 10px !important;
+    font-size: 9px !important;
     margin: 0 !important;
     padding: 0 !important;
   }
@@ -293,7 +298,8 @@ body {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     page-break-after: avoid !important;
-    zoom: 0.86; /* Guarantees dense multi-section faculty schedules fit onto 1 single sheet */
+    zoom: 0.80;
+    break-after: avoid !important; /* Guarantees dense multi-section faculty schedules fit onto 1 single sheet */
   }
 
   /* Ensure the grid table spans 100% landscape width with fixed columns */
@@ -301,6 +307,7 @@ body {
     width: 100% !important;
     min-width: 100% !important;
     table-layout: fixed !important;
+    border-collapse: collapse !important;
   }
 
   /* Keep cell content compact and legible */
