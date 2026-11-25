@@ -16,7 +16,7 @@ export default function EnrollmentsTab() {
         Promise.all([listOfferings(), listUsers()])
             .then(([o, u]) => {
                 setOfferings(o ?? []);
-                setStudents((u ?? []).filter((x) => x.role === "STUDENT" && x.is_active));
+                setStudents((u?.items ?? []).filter((x) => x.role === "STUDENT" && x.is_active));
             })
             .catch((e) => setMsg({ ok: false, text: e instanceof Error ? e.message : "Failed to load" }));
     }, []);

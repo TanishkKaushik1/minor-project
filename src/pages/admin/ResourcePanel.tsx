@@ -186,6 +186,13 @@ export default function ResourcePanel({
                 [n]: v,
                 ...Object.fromEntries(activeEditFields.filter((f) => f.dependsOn === n).map((f) => [f.name, ""])),
             };
+            if (n === "course_type") {
+                if (["PROJECT", "TRAINING", "SEMINAR"].includes(v)) {
+                    next.requires_attendance = "false";
+                } else if (["LECTURE", "LAB"].includes(v)) {
+                    next.requires_attendance = "true";
+                }
+            }
             activeEditFields.forEach((f) => {
                 if (f.options && f.dependsOn === n) {
                     f.options(next)
@@ -226,11 +233,21 @@ export default function ResourcePanel({
     };
 
     const setVal = (n: string, v: string) => {
-        setVals((p) => ({
-            ...p,
-            [n]: v,
-            ...Object.fromEntries(fields.filter((f) => f.dependsOn === n).map((f) => [f.name, ""])),
-        }));
+        setVals((p) => {
+            const next = {
+                ...p,
+                [n]: v,
+                ...Object.fromEntries(fields.filter((f) => f.dependsOn === n).map((f) => [f.name, ""])),
+            };
+            if (n === "course_type") {
+                if (["PROJECT", "TRAINING", "SEMINAR"].includes(v)) {
+                    next.requires_attendance = "false";
+                } else if (["LECTURE", "LAB"].includes(v)) {
+                    next.requires_attendance = "true";
+                }
+            }
+            return next;
+        });
     };
 
     // Filter rows based on search
@@ -578,7 +595,15 @@ export default function ResourcePanel({
                                 )}
                                 {cols.map((c) => (
                                     <th key={c} className="px-4 py-2.5 font-semibold text-slate-600 capitalize">
-                                        {c === "term_name" ? "Semester" : c === "is_term_active" ? "Active Semester" : c.replace(/_/g, " ")}
+                                        {c === "term_name"
+                                            ? "Semester"
+                                            : c === "is_term_active"
+                                            ? "Active Semester"
+                                            : c === "requires_attendance"
+                                            ? "Attendance (75%)"
+                                            : c === "is_elective"
+                                            ? "Elective"
+                                            : c.replace(/_/g, " ")}
                                     </th>
                                 ))}
                                 {(remove || edit || rowActions) && (
@@ -621,6 +646,8 @@ export default function ResourcePanel({
                                         {cols.map((c) => {
                                             const val = r[c];
                                             const isId = c === "id";
+                                            const isAttendanceReq = c === "requires_attendance";
+                                            const isElective = c === "is_elective";
                                             const isStatus = typeof val === "boolean" || c === "status" || c === "is_active";
                                             const isCourseType = c === "course_type" || c === "activity";
 
@@ -629,6 +656,26 @@ export default function ResourcePanel({
                                                     {isId ? (
                                                         <span className="font-mono tabular-nums text-slate-500 text-xs font-medium">
                                                             #{val}
+                                                        </span>
+                                                    ) : isAttendanceReq ? (
+                                                        <span
+                                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium ${
+                                                                val !== false
+                                                                    ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                                                    : "bg-amber-50 text-amber-800 border border-amber-200"
+                                                            }`}
+                                                        >
+                                                            {val !== false ? "Tracked (75%)" : "Exempt"}
+                                                        </span>
+                                                    ) : isElective ? (
+                                                        <span
+                                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium ${
+                                                                val
+                                                                    ? "bg-purple-50 text-purple-800 border border-purple-200"
+                                                                    : "bg-slate-100 text-slate-600 border border-slate-200"
+                                                            }`}
+                                                        >
+                                                            {val ? "Elective" : "Core"}
                                                         </span>
                                                     ) : isStatus ? (
                                                         <span

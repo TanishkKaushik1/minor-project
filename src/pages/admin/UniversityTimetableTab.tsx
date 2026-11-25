@@ -63,7 +63,82 @@ const DAYS = [
     { id: 7, name: "Sun", full: "Sunday" },
 ];
 
+
+interface MergedSlotGroup {
+    subjectCodes: string[];
+    subjectNames: string[];
+    teacherAbbr: string;
+    teacherName: string;
+    room: string;
+    activity: string;
+    sectionNames: string[];
+    batchIds: string[];
+    isLab: boolean;
+    slots: SamaySlot[];
+}
+
+function groupCellSlots(slots: SamaySlot[]): MergedSlotGroup[] {
+    if (slots.length <= 1) {
+        return slots.map((s) => ({
+            subjectCodes: [s.subject_code],
+            subjectNames: [s.subject_name],
+            teacherAbbr: s.teacher_abbr,
+            teacherName: s.teacher_name,
+            room: s.room || "TBA",
+            activity: s.activity,
+            sectionNames: s.section_name ? [s.section_name] : [],
+            batchIds: s.batch_id && s.batch_id !== "0" ? [s.batch_id] : [],
+            isLab: s.activity.toLowerCase() === "lab" || s.room.toLowerCase().includes("lp"),
+            slots: [s]
+        }));
+    }
+
+    const groups: Record<string, MergedSlotGroup> = {};
+    const result: MergedSlotGroup[] = [];
+
+    for (const s of slots) {
+        const roomKey = (s.room || "TBA").trim().toLowerCase();
+        const actKey = (s.activity || "Lecture").trim().toLowerCase();
+        const key = `${roomKey}___${actKey}`;
+
+        if (!groups[key]) {
+            const grp: MergedSlotGroup = {
+                subjectCodes: [s.subject_code],
+                subjectNames: [s.subject_name],
+                teacherAbbr: s.teacher_abbr,
+                teacherName: s.teacher_name,
+                room: s.room || "TBA",
+                activity: s.activity,
+                sectionNames: s.section_name ? [s.section_name] : [],
+                batchIds: s.batch_id && s.batch_id !== "0" ? [s.batch_id] : [],
+                isLab: s.activity.toLowerCase() === "lab" || s.room.toLowerCase().includes("lp"),
+                slots: [s]
+            };
+            groups[key] = grp;
+            result.push(grp);
+        } else {
+            const grp = groups[key];
+            if (!grp.subjectCodes.includes(s.subject_code)) {
+                grp.subjectCodes.push(s.subject_code);
+            }
+            if (!grp.subjectNames.includes(s.subject_name)) {
+                grp.subjectNames.push(s.subject_name);
+            }
+            if (s.section_name && !grp.sectionNames.includes(s.section_name)) {
+                grp.sectionNames.push(s.section_name);
+            }
+            if (s.batch_id && s.batch_id !== "0" && !grp.batchIds.includes(s.batch_id)) {
+                grp.batchIds.push(s.batch_id);
+            }
+            grp.slots.push(s);
+        }
+    }
+
+    return result;
+}
+
 export default function UniversityTimetableTab() {
+
     // Mode: "section" | "faculty"
     // Safe Timetable Sync & Rollback States
     const [syncModalOpen, setSyncModalOpen] = useState(false);
@@ -436,11 +511,11 @@ export default function UniversityTimetableTab() {
 
                     <button
                         onClick={handlePrint}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 font-medium text-xs rounded-md border border-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 active:scale-[0.98] whitespace-nowrap"
-                        title="Print timetable or save as PDF (Landscape)"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-medium text-xs rounded-md shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 active:scale-[0.98] whitespace-nowrap"
+                        title="Print timetable or Export as PDF (A4 Landscape 1-Page)"
                     >
-                        <Printer className="h-3.5 w-3.5 text-slate-500" />
-                        <span>Print / Save PDF</span>
+                        <Printer className="h-3.5 w-3.5 text-white" />
+                        <span>Print / Export PDF</span>
                     </button>
                 </div>
             </div>
@@ -738,65 +813,82 @@ export default function UniversityTimetableTab() {
                                                             </div>
                                                         ) : (
                                                             <div className="space-y-1 print:space-y-0.5">
-                                                                {matchingSlots.map((slot, idx) => {
-                                                                    const isLab =
-                                                                        slot.activity.toLowerCase() === "lab" ||
-                                                                        slot.room.toLowerCase().includes("lp");
+                                                                {groupCellSlots(matchingSlots).map((group, idx) => {
+                                                                    const isLab = group.isLab;
+                                                                    const isMerged = group.sectionNames.length > 1 || group.subjectCodes.length > 1;
+                                                                    const groupBadge = group.batchIds.length > 0 ? `G-${group.batchIds.join(",")}` : null;
+                                                                    const displaySubjectCode = group.subjectCodes.join(" / ");
+                                                                    const displaySections = group.sectionNames
+                                                                        .map(sec => sec.replace(/^CSE-/, "").replace(/^SOICT-/, ""))
+                                                                        .join(", ");
 
-                                                                    const groupBadge = slot.batch_id && slot.batch_id !== "0" ? `G-${slot.batch_id}` : null;
-                                                                    const groupTitle = groupBadge ? ` (${groupBadge})` : "";
+                                                                    const tooltipLines = [
+                                                                        `${displaySubjectCode}: ${group.subjectNames.join(" / ")}`,
+                                                                        isMerged ? `Combined Class: ${group.sectionNames.join(", ")}` : `Section: ${group.sectionNames[0] || "All"}`,
+                                                                        `Faculty: ${group.teacherName} (${group.teacherAbbr})`,
+                                                                        `Room: ${group.room}${groupBadge ? ` (${groupBadge})` : ""}`
+                                                                    ].filter(Boolean).join("\n");
 
                                                                     return (
                                                                         <div
                                                                             key={idx}
-                                                                            title={`${slot.subject_code}: ${slot.subject_name}${groupTitle}\nFaculty: ${slot.teacher_name} (${slot.teacher_abbr})\nRoom: ${slot.room || "TBA"}${groupTitle}\nSection: ${slot.section_name}`}
+                                                                            title={tooltipLines}
                                                                             className={`p-1.5 rounded-md border text-left shadow-2xs motion-safe:transition-transform hover:scale-[1.02] cursor-default print:p-0.5 print:my-0 print:rounded-none print:shadow-none print:border ${
                                                                                 isLab
                                                                                     ? "bg-emerald-50/90 border-emerald-300 text-emerald-950"
+                                                                                    : isMerged
+                                                                                    ? "bg-indigo-50/90 border-indigo-300 text-indigo-950"
                                                                                     : "bg-blue-50/90 border-blue-200 text-blue-950"
                                                                             }`}
                                                                         >
                                                                             {/* Subject Code + Abbr */}
                                                                             <div className="flex items-center justify-between gap-1 leading-tight">
-                                                                                <span className="font-extrabold text-[11px] print:text-[10px] tracking-tight">
-                                                                                    {slot.subject_code}
+                                                                                <span className="font-extrabold text-[11px] print:text-[8.5px] tracking-tight">
+                                                                                    {displaySubjectCode}
                                                                                 </span>
-                                                                                {slot.teacher_abbr && (
+                                                                                {group.teacherAbbr && (
                                                                                     <span
-                                                                                        className={`text-[9px] font-bold px-1 rounded ${
+                                                                                        className={`text-[9px] print:text-[7.5px] font-bold px-1 rounded ${
                                                                                             isLab
                                                                                                 ? "bg-emerald-200/70 text-emerald-800"
+                                                                                                : isMerged
+                                                                                                ? "bg-indigo-200/70 text-indigo-800"
                                                                                                 : "bg-blue-200/70 text-blue-800"
                                                                                         }`}
                                                                                     >
-                                                                                        {slot.teacher_abbr}
+                                                                                        {group.teacherAbbr}
                                                                                     </span>
                                                                                 )}
                                                                             </div>
 
                                                                             {/* Room Badge + Group Badge */}
-                                                                            <div className="flex items-center justify-between gap-1 mt-1 print:mt-0 text-[10px] print:text-[8px] font-semibold text-slate-600">
+                                                                            <div className="flex items-center justify-between gap-1 mt-1 print:mt-0 text-[10px] print:text-[7.5px] font-semibold text-slate-600">
                                                                                 <div className="flex items-center gap-1 min-w-0">
                                                                                     <MapPin className="h-2.5 w-2.5 text-slate-400 flex-shrink-0" />
                                                                                     <span
                                                                                         className={`truncate ${
-                                                                                            isLab ? "text-emerald-800" : "text-blue-800"
+                                                                                            isLab ? "text-emerald-800" : isMerged ? "text-indigo-800" : "text-blue-800"
                                                                                         }`}
                                                                                     >
-                                                                                        {slot.room || "TBA"}
+                                                                                        {group.room || "TBA"}
                                                                                     </span>
                                                                                 </div>
                                                                                 {groupBadge && (
-                                                                                    <span className="shrink-0 px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-200/90 text-emerald-900 border border-emerald-300">
+                                                                                    <span className="shrink-0 px-1.5 py-0.2 rounded text-[9px] print:text-[7px] font-bold bg-emerald-200/90 text-emerald-900 border border-emerald-300">
                                                                                         {groupBadge}
+                                                                                    </span>
+                                                                                )}
+                                                                                {isMerged && !groupBadge && (
+                                                                                    <span className="shrink-0 px-1 py-0.2 rounded text-[8px] print:text-[7px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                                                                        Combined
                                                                                     </span>
                                                                                 )}
                                                                             </div>
 
-                                                                            {/* In Faculty View: Show Section Name */}
-                                                                            {viewMode === "faculty" && slot.section_name && (
-                                                                                <div className="mt-0.5 print:mt-0 text-[9px] print:text-[8px] print:leading-tight font-medium print:font-bold text-slate-500 print:text-slate-700 truncate">
-                                                                                    {slot.section_name}
+                                                                            {/* In Faculty View: Show Section Name or Combined Sections */}
+                                                                            {viewMode === "faculty" && group.sectionNames.length > 0 && (
+                                                                                <div className="mt-0.5 print:mt-0 text-[9px] print:text-[7px] print:leading-tight font-medium print:font-bold text-slate-600 print:text-slate-800 truncate">
+                                                                                    {displaySections}
                                                                                 </div>
                                                                             )}
                                                                         </div>
